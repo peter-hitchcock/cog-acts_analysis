@@ -4,7 +4,6 @@
 .Ruserdata
 .DS_Store
 /*.pdf
-/*.html
 /*.tar.gz
 /*.Rcheck/
 .Rproj.user/

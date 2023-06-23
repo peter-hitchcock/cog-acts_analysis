@@ -1,0 +1,1226 @@
+---
+title: "Results for Supplemental Material for Hitchcock & Frank 2023"
+date: "`r Sys.Date()`"
+author: "Peter Frank Hitchcock - LNCC Lab, Brown University"
+output:
+  html_document:
+    toc: true
+---
+
+```{r}
+sapply(c(
+         "rjson", 
+         "data.table", 
+         "dplyr", 
+         "ggplot2", 
+         "stringr", 
+         "purrr", 
+         "foreach", 
+         "doParallel", 
+         "patchwork", 
+         "lme4", 
+         "lmerTest",
+         "testit",
+         "latex2exp",
+         "ggpubr"
+         ), 
+       require, character=TRUE)
+sf <- function() sapply(paste0("./Functions/", list.files("./Functions/", recursive=TRUE)), source) # Source all fxs
+sf()
+DefPlotPars()
+registerDoParallel(cores=round(detectCores()*2/3))
+```
+
+# Load data from studies 1 and 2    
+
+ 
+```{r}
+s1_train <- read.csv("../data/cleaned_files/s1_train_with_delay_deident.csv")
+s1_sit <- read.csv("../data/cleaned_files/s1_SIT_deident.csv") %>% rename(ID=deident_ID) %>% relocate(ID)
+s2_train <- read.csv("../data/cleaned_files/s2_train_with_delay_deident.csv")
+s2_sit <- read.csv("../data/cleaned_files/s2_sit_deident_corrected_names.csv")
+s1_pst <- read.csv("../data/cleaned_files/s1_PST_deident.csv") %>% rename(ID=deident_ID)
+s2_pst <- read.csv("../data/cleaned_files/s2_PST_deident.csv") %>% rename(ID=deident_ID)
+```
+
+Harmonize variables and create some separate vars    
+
+```{r}
+# Study 2 harmonize  
+s2_sit[s2_sit$condition=="cogn", "condition"] <- "cognitive" 
+s2_train[s2_train$trial_within_condition <= 20, "block"] <- 1
+s2_train[s2_train$trial_within_condition > 20, "block"] <- 2
+
+s1_sit$probability <- factor(unlist(map(strsplit(as.character(s1_sit$valence_and_probability), "_"), 1)))
+s1_sit$valence <- factor(unlist(map(strsplit(as.character(s1_sit$valence_and_probability), "_"), 2)))
+
+s2_sit$probability <- factor(unlist(map(strsplit(as.character(s2_sit$valence_and_probability), "_"), 1)))
+s2_sit$valence <- factor(unlist(map(strsplit(as.character(s2_sit$valence_and_probability), "_"), 2)))
+```
+
+Define paths and functions  
+```{r}
+# MLE results  
+allp <- "../model_res/opts_mle_paper_final/all/"
+# Empirical Bayes results 
+bp <- "../model_res/opts_mle_paper_final/best/"
+# Simulations  
+sp <- "../model_res/sims_clean/sims_from_mle/"
+# Read model function 
+rm <- function(path, model_str) read.csv(paste0(path, model_str))
+```
+
+# Plotting delay  
+
+
+```{r}
+s1_train_delay_summs <- s1_train %>% filter(!is.na(delay_trunc)) %>% group_by(condition, delay_trunc, ID) %>% summarize(m=mean(correct))
+
+s1_tr_delay_summs <- 
+  Rmisc::summarySEwithin(s1_train_delay_summs,
+                        measurevar = "m",
+                        withinvars = c("condition", "delay_trunc"), 
+                        idvar = "ID")
+```
+
+
+```{r}
+s2_train_delay_summs <- s2_train %>% filter(!is.na(delay_trunc)) %>% group_by(condition, delay_trunc, ID) %>% summarize(m=mean(correct))
+
+s2_tr_delay_summs <- 
+  Rmisc::summarySEwithin(s2_train_delay_summs,
+                        measurevar = "m",
+                        withinvars = c("condition", "delay_trunc"), 
+                        idvar = "ID")
+
+```
+
+
+
+```{r}
+a <- ggplot(s1_tr_delay_summs, aes(x=delay_trunc, y=m, group=condition, color=condition)) + 
+  geom_line(size=2, position = position_dodge(width = .2)) +
+  geom_hline(yintercept=c(seq(.6, .8, .1)), size=.3, color="gray57") + 
+  geom_hline(yintercept = .5, size=2, color="black") +
+  geom_errorbar(aes(x=delay_trunc, y=m, ymin=m-se, ymax=m+se, group=condition),
+                position = position_dodge(width = .2), color="black", size=1.5, width=.15) +
+  geom_point(size=6, position = position_dodge(width = .2), pch=21, fill="gray57", alpha=.95) +
+  ga + ap + ft + tol + ylim(.48, .82) + tp +
+  scale_color_manual(values=c("purple", "orange"), 
+                     labels=c("cognitive", "overt"))  + ylab("Proportion correct") + xlab("Delay") + 
+  ggtitle("Experiment 1")
+```
+
+```{r}
+b <- ggplot(s2_tr_delay_summs, aes(x=delay_trunc, y=m, group=condition, color=condition)) + 
+  geom_line(size=2, position = position_dodge(width = .2)) +
+  geom_hline(yintercept=c(seq(.6, .8, .1)), size=.3, color="gray57") + 
+  geom_hline(yintercept = .5, size=2, color="black") +
+  geom_errorbar(aes(x=delay_trunc, y=m, ymin=m-se, ymax=m+se, group=condition),
+                position = position_dodge(width = .2), color="black", size=1.5, width=.15) +
+  geom_point(size=6, position = position_dodge(width = .2), pch=21, fill="gray57", alpha=.95) +
+  ga + ap + ft + lp + ylim(.48, .82) + tp +
+  scale_color_manual(values=c("purple", "orange"), 
+                     labels=c("cognitive", "overt"))  + ylab("") + xlab("Delay") + 
+  ggtitle("Experiment 2")
+```
+
+```{r}
+delay_comb_plot <- a+b
+```
+
+```{r, fig.width=8}
+delay_comb_plot
+```
+
+```{r}
+#ggsave("../paper/figs/fig_parts/delay_plot.png", delay_comb_plot, height=7, width=10, dpi=700)
+```
+
+# Supplemental material model validation (although learning curves exp 2 plot is in `key_results`)  
+
+
+6/5/23 — reran sims to mkae sure completely updated/bug fixed version of par results used  
+
+
+```{r}
+s1_train_sim_m1_eb <- 
+  rm(sp, 
+     "SIM_EMPIRICAL_BAYES_study_1_train_SIT__train_RunMQLearnerDiffDecayToPessPrior57088.csv")
+
+s2_train_sim_m1_eb <- 
+  rm(sp, 
+    "SIM_EMPIRICAL_BAYES_study_2_train_SIT__train_RunMQLearnerDiffDecayToPessPrior28414.csv")
+
+s1_test_sim_m1_eb <- 
+  rm(sp, 
+     "SIM_EMPIRICAL_BAYES_study_1_train_SIT__sit_RunMQLearnerDiffDecayToPessPrior57088.csv")
+
+s2_test_sim_m1_eb <- 
+  rm(sp, 
+    "SIM_EMPIRICAL_BAYES_study_2_train_SIT__sit_RunMQLearnerDiffDecayToPessPrior28414.csv")
+
+```
+
+
+## Capture of delay effects  
+
+```{r}
+out_a <- SimplePlotSimTrainingDelay(emp_df=s1_train, sim_df=s1_train_sim_m1_eb)
+```
+```{r}
+out_b <- SimplePlotSimTrainingDelay(emp_df=s2_train, sim_df=s2_train_sim_m1_eb) 
+```
+
+
+```{r, fig.width=9}
+out_a
+```
+
+```{r, fig.width=9}
+out_b
+```
+
+
+
+```{r}
+# ggsave("../paper/figs/fig_parts/simvsemp_delay_plot_1.png", out_a, height=8, width=12, dpi=700)
+# ggsave("../paper/figs/fig_parts/simvsemp_delay_plot_2.png", out_b, height=8, width=12, dpi=700)
+```
+
+
+### Worst-option Proportions in Test Phase and comparison to same model without CK     
+
+
+```{r, message=FALSE}
+worst_plots_a_ck <- PlotAllWorstTestOptionsSimVsEmp(s1_sit, s1_test_sim_m1_eb, m_string="Simulations \nwith Choice Kernel")
+```
+
+
+
+```{r}
+w_a_ck <- worst_plots_a_ck[[1]]+worst_plots_a_ck[[2]]
+```
+
+
+```{r, fig.width=10, fig.height=6, message=FALSE}
+w_a_ck 
+```
+
+
+```{r, message=FALSE}
+worst_plots_b_ck <- PlotAllWorstTestOptionsSimVsEmp(s2_sit, s2_test_sim_m1_eb, m_string="Simulations \nwith Choice Kernel")
+```
+```{r}
+w_b_ck <- worst_plots_b_ck[[1]]+worst_plots_b_ck[[2]]
+```
+
+```{r, fig.width=10, fig.height=6, message=FALSE}
+w_b_ck
+```
+
+
+
+```{r}
+# ggsave("../paper/figs/fig_parts/CK_simvsemp_worst_plot_1.png", w_a_ck, height=6, width=15, dpi=700)
+# ggsave("../paper/figs/fig_parts/CK_simvsemp_worst_plot_2.png", w_b_ck, height=6, width=15, dpi=700)
+```
+
+
+Comparative worst plots  
+
+
+```{r}
+s1_test_sim_m1_eb_no_ck <- 
+  rm(sp, 
+     "SIM_EMPIRICAL_BAYES_study_2_train_SIT__sit_RunMQLearnerDiffDecayToPessPriorNoCK16278.csv")
+
+s2_test_sim_m1_eb_no_ck <- 
+  rm(sp, 
+    "SIM_EMPIRICAL_BAYES_study_1_train_SIT__sit_RunMQLearnerDiffDecayToPessPriorNoCK31508.csv")
+
+```
+
+
+
+```{r, message=FALSE}
+worst_plots_nck_a <- PlotAllWorstTestOptionsSimVsEmp(s1_sit, s1_test_sim_m1_eb_no_ck, m_string="Simulations \nNo Choice Kernel")
+```
+
+
+```{r, fig.width=10, fig.height=6, message=FALSE}
+w_a_nck <- worst_plots_nck_a[[1]]+worst_plots_nck_a[[2]]
+```
+
+```{r, fig.width=10, fig.height=6, message=FALSE}
+w_a_nck
+```
+
+```{r, message=FALSE}
+worst_plots_nck_b <- PlotAllWorstTestOptionsSimVsEmp(s2_sit, s2_test_sim_m1_eb_no_ck, m_string="Simulations \nNo Choice Kernel")
+```
+
+Captures the mis-spec  
+
+```{r}
+w_b_nck <- worst_plots_nck_b[[1]]+worst_plots_nck_b[[2]]
+```
+
+```{r, fig.width=10, fig.height=6, message=FALSE}
+w_b_nck
+```
+
+```{r}
+# ggsave("../paper/figs/fig_parts/NOCK_simvsemp_worst_plot_1.png", w_a_nck, height=6, width=15, dpi=700)
+# ggsave("../paper/figs/fig_parts/NOCKsimvsemp_worst_plot_2.png", w_b_nck, height=6, width=15, dpi=700)
+```
+
+# Parameter recovery   
+
+```{r}
+m1_par_recov <- 
+  read.csv("../model_res/par_recov_clean/pr_opts_mle/best_pr/par_recov_BEST_EMPIRICAL_BAYES_mv_gaussstudy_1_train_SIT_RunMQLearnerDiffDecayToPessPrior_76217.csv") # Confirmed created 3/28 after the 3/23 bug fix on decay  
+```
+
+```{r}
+eb_recov_pars_m1 <- m1_par_recov[grep("EB_recovered", names(m1_par_recov))]
+simmed_pars_m1 <- m1_par_recov[grep("simmed", names(m1_par_recov))]
+```
+
+Phi difference   
+
+```{r}
+this_eb_pr_df <- 
+  data.frame("simulated"=simmed_pars_m1$cog_phi_simmed-simmed_pars_m1$overt_phi_simmed,
+             "EB_recovered"=eb_recov_pars_m1$cog_phi_EB_recovered-eb_recov_pars_m1$overt_phi_EB_recovered)
+
+phi_diff <- ggplot(this_eb_pr_df, aes(x=simulated, y=EB_recovered)) +
+      geom_line(aes(x=simulated, y=simulated), size=4) +
+      geom_point(size=8, pch=21, fill="gray57", alpha=.8) + 
+      stat_cor(method="spearman", size=6, label.y=.9) +
+      ggtitle(TeX("$\\phi^{Cog}-\\phi^{Overt}")) +
+      ga + ap + tp  + 
+      ylab("Recovered") + xlab("Simulated")
+phi_diff
+```
+
+
+```{r}
+#ggsave("../paper/figs/fig_parts/pr/pr_phi_diff.png", phi_diff, height=4, width=8, dpi=700)
+```
+
+
+Percent correctly recovering the sign difference  
+```{r}
+this_eb_pr_df$sim_sign <- if_else(this_eb_pr_df$simulated >= 0, 1, 0)
+this_eb_pr_df$eb_sign <- if_else(this_eb_pr_df$EB_recovered >= 0, 1, 0)
+# this_eb_pr_df$sim_sign==this_eb_pr_df$eb_sign
+# (this_eb_pr_df$sim_sign==this_eb_pr_df$eb_sign)*1
+ta <- table((this_eb_pr_df$sim_sign==this_eb_pr_df$eb_sign)*1)
+ta[2]/sum(ta)
+```
+
+
+
+```{r}
+plot <- NULL
+plot <- CreatePRPlot(simmed_pars_m1$epsilon_simmed, eb_recov_pars_m1$epsilon_EB_recovered, 
+                     "$\\epsilon", stat_pos = .32)
+plot
+```
+
+
+```{r}
+# ggsave("../paper/figs/fig_parts/pr/eps.png",
+#        plot, height=4, width=8, dpi=700)
+```
+
+```{r}
+plot <- NULL
+plot <- CreatePRPlot(simmed_pars_m1$cog_phi_simmed, eb_recov_pars_m1$cog_phi_EB_recovered, 
+                     "$\\phi^{Cog}")
+plot
+```
+
+
+```{r}
+# ggsave("../paper/figs/fig_parts/pr/phi_cog.png",
+#        plot, height=4, width=8, dpi=700)
+```
+
+```{r}
+plot <- NULL
+plot <- CreatePRPlot(simmed_pars_m1$overt_phi_simmed, eb_recov_pars_m1$overt_phi_EB_recovered, 
+                     "$\\phi^{Overt}")
+plot
+```
+
+
+```{r}
+# ggsave("../paper/figs/fig_parts/pr/phi_overt.png",
+#        plot, height=4, width=8, dpi=700)
+```
+
+```{r}
+plot <- NULL
+plot <- CreatePRPlot(simmed_pars_m1$choice_LR_simmed, eb_recov_pars_m1$choice_LR_EB_recovered, 
+                     "$\\alpha_{CK}")
+plot
+```
+
+```{r}
+# ggsave("../paper/figs/fig_parts/pr/ck.png",
+#        plot, height=4, width=8, dpi=700)
+```
+
+
+```{r}
+plot <- NULL
+plot <- CreatePRPlot(simmed_pars_m1$explor_scalar_simmed, eb_recov_pars_m1$explor_scalar_EB_recovered, 
+                     "ES")
+plot
+```
+
+```{r}
+# ggsave("../paper/figs/fig_parts/pr/es.png",
+#        plot, height=4, width=8, dpi=700)
+```
+
+
+```{r}
+plot <- NULL
+plot <- CreatePRPlot(simmed_pars_m1$q_LR_simmed, eb_recov_pars_m1$q_LR_EB_recovered, 
+                     "$\\alpha_{Q}")
+plot
+```
+
+```{r}
+# ggsave("../paper/figs/fig_parts/pr/qlr.png",
+#        plot, height=4, width=8, dpi=700)
+```
+
+
+```{r}
+plot <- NULL
+plot <- CreatePRPlot(simmed_pars_m1$beta_simmed, eb_recov_pars_m1$beta_EB_recovered, 
+                     "$\\beta", stat_pos = 25)
+plot
+```
+
+
+
+
+# Simulation with a high difference in phi   
+
+Load model fits  
+
+```{r}
+m1_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior17352.csv")
+m1_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior58319.csv")
+
+m1_study1_eb <- rbind(m1_study1_eb_v1, m1_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m1_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior12123.csv")
+m1_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior74336.csv")
+
+m1_study2_eb <- rbind(m1_study2_eb_v1, m1_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+```
+
+Find a participant with relatively high diff in decay   
+```{r}
+m1_study1_eb$cog_phi[25]
+m1_study1_eb$overt_phi[25]
+```
+
+
+```{r}
+m1_study1_eb[25, ]
+```
+
+This did correspond to a big difference in performance empirically  
+```{r}
+s1_train %>% filter(ID==25) %>% group_by(valence_and_probability, condition) %>% summarize(m=mean(correct))
+s1_sit %>% filter(ID==25) %>% group_by(valence_and_probability, condition) %>% summarize(m=mean(correct))
+```
+
+
+Summarize the correct and incorrect q-values   
+
+```{r}
+corr_q_vals_summ <- 
+  s1_train_sim_m1_eb %>% filter(ID==25) %>% 
+  group_by(cond, probability, valence, trial_within_condition) %>% summarize(m=mean(sim_correct_Q_vals))
+corr_q_vals_summ$valence <- factor(corr_q_vals_summ$valence, levels=c("reward", "punishment"))
+corr_q_vals_summ[corr_q_vals_summ$cond=="cog", "cond"] <- "cognitive"
+```
+
+```{r}
+incorr_q_vals_summ <- 
+  s1_train_sim_m1_eb %>% filter(ID==25) %>% 
+  group_by(cond, probability, valence, trial_within_condition) %>% summarize(m=mean(sim_incorrect_Q_vals))
+incorr_q_vals_summ$valence <- factor(incorr_q_vals_summ$valence, levels=c("reward", "punishment"))
+
+incorr_q_vals_summ[incorr_q_vals_summ$cond=="cog", "cond"] <- "cognitive"
+```
+
+Summarize the simulated performance during learning  
+```{r}
+sim_perf_summ <- 
+  s1_train_sim_m1_eb %>% filter(ID==25) %>% 
+  group_by(cond, probability, valence, trial_within_condition) %>% summarize(m=mean(sim_corrs))
+sim_perf_summ$valence <- factor(sim_perf_summ$valence, levels=c("reward", "punishment"))
+
+sim_perf_summ[sim_perf_summ$cond=="cog", "cond"] <- "cognitive"
+```
+
+
+Take the difference in q-values  
+```{r}
+assert(all(corr_q_vals_summ$trial_within_condition==incorr_q_vals_summ$trial_within_condition))
+assert(all(corr_q_vals_summ$valence==incorr_q_vals_summ$valence))
+assert(all(corr_q_vals_summ$probability==incorr_q_vals_summ$probability))
+
+corr_q_vals_summ$diff <- corr_q_vals_summ$m-incorr_q_vals_summ$m
+```
+
+```{r}
+a <- 
+  ggplot(corr_q_vals_summ %>% filter(probability=="90-10"),   
+       aes(x=trial_within_condition, y=m, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ cond) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.9, color="blue", size=1.5, linetype="longdash") +
+  geom_hline(yintercept=-.1, color="red", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("Q-value") +
+  ggtitle("Correct") +
+  xlab("Stim iteration") + ylim(-1, 1)
+```
+
+```{r}
+b <- 
+  ggplot(incorr_q_vals_summ %>% filter(probability=="90-10"),   
+       aes(x=trial_within_condition, y=m, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ cond) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.1, color="blue", size=1.5, linetype="longdash") +
+  geom_hline(yintercept=-.9, color="red", size=1.5, linetype="longdash") +
+  ga + ap + tp + ft + tol +
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ggtitle("Incorrect") +
+  ylab("") +
+  xlab("Stim iteration") + ylim(-1, 1)
+```
+
+```{r}
+c <- 
+   ggplot(corr_q_vals_summ %>% filter(probability=="90-10"),   
+       aes(x=trial_within_condition, y=diff, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ cond) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.8, color="blue", size=1.5, linetype="longdash") +
+  geom_hline(yintercept=.81, color="red", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("") +
+  ggtitle("Difference") +
+  xlab("Stim iteration") + ylim(-1, 1)
+
+# For legend  
+# ggplot(corr_q_vals_summ %>% filter(probability=="90-10"),   
+#        aes(x=trial_within_condition, y=diff, color=valence)) +
+#   geom_hline(yintercept=0, color="black", size=2) + 
+#   geom_line(size=3) + facet_wrap( ~ cond) + 
+#   scale_color_manual(values=c("blue", "red")) +
+#   geom_hline(yintercept=.8, color="blue", size=1.5, linetype="longdash") +
+#   geom_hline(yintercept=.81, color="red", size=1.5, linetype="longdash") +
+#   ga + ap +   ft + 
+#   theme(legend.text = element_text(size = 30),
+#                legend.title = element_blank(),
+#                legend.key.size = unit(2.5, 'lines')) +
+#   theme(plot.title = element_text(size = 30, hjust = .5)) +
+#   ylab("") +
+#   ggtitle("Difference") +
+#   xlab("Stim iteration") + ylim(-1, 1)
+```
+
+```{r}
+d <- ggplot(sim_perf_summ %>% filter(probability=="90-10"),   
+       aes(x=trial_within_condition, y=m, color=valence)) +
+  geom_hline(yintercept=0.5, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ cond) + 
+  scale_color_manual(values=c("blue", "red")) +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("Proportion correct") +
+  ggtitle("Learning") +
+  xlab("Stim iteration") 
+```
+
+
+
+
+```{r}
+sim_test_perf_summ <- 
+  s1_test_sim_m1_eb %>% filter(ID==25) %>% 
+  group_by(cond, probability, valence) %>% summarize(m=mean(sit_sim_corrs))
+sim_test_perf_summ$valence <- factor(sim_test_perf_summ$valence, levels=c("reward", "punishment"))
+
+sim_test_perf_summ[sim_test_perf_summ$cond=="cog", "cond"] <- "cognitive"
+```
+
+
+
+```{r}
+#sim_test_perf_summ %>% filter(probability=="90-10")
+e <- ggplot(sim_test_perf_summ %>% filter(probability=="90-10"),   
+       aes(x=valence, y=m, color=valence)) + 
+  geom_hline(yintercept=0.5, color="black", size=2) +
+  geom_bar(stat="identity", fill="white", size=3) + 
+  facet_wrap(~cond) +
+  
+  scale_color_manual(values=c("blue", "red")) +
+  ga + ap + tol + ft +
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("Proportion correct") +
+  ggtitle("Test") +
+  
+  xlab("") + theme(axis.ticks.x=element_blank(), axis.text.x=element_blank())#+ ylim(.48, 1) +
+```
+
+
+```{r}
+q_vals_comb <- a + b + c
+```
+
+
+```{r, fig.height=5, fig.width=14}
+q_vals_comb
+```
+
+
+```{r}
+sim_perf_comb <- d + e
+```
+
+
+```{r, fig.height=5, fig.width=12}
+sim_perf_comb
+```
+
+
+```{r}
+#ggsave("../paper/figs/fig_parts/q_vals_plot.png", q_vals_comb, height=5, width=16, dpi=700)
+```
+
+```{r}
+#ggsave("../paper/figs/fig_parts/sim_perf_comb.png", sim_perf_comb, height=6, width=14, dpi=700)
+```
+
+
+
+# Supplementary Figure 7  
+
+Plotting Q-values by valence for m3 vs. m4 (m6 vs. m7) to understand how the introduction of pessimistic priors affects performance  
+
+
+```{r}
+# Pessimistic  
+m3_sims_s1 <-  
+  rm(sp,  "SIM_EMPIRICAL_BAYES_study_1_train_SIT__train_RunMQLearnerDecayToPessPrior82512.csv")
+# Naive  
+m4_sims_s1 <-  
+  rm(sp, "SIM_EMPIRICAL_BAYES_study_1_train_SIT__train_RunMQLearnerDecayTo0Inits36394.csv")
+```
+
+M6: Q nothing varied in paper  
+
+```{r}
+pess_priors_qv_summs <- m3_sims_s1 %>% filter(probability=="90-10") %>% 
+  group_by(valence, trial_within_condition) %>% 
+  summarize(m_corr=mean(sim_correct_Q_vals), m_incorr=mean(sim_incorrect_Q_vals)) %>% 
+  mutate(diff=m_corr-m_incorr)
+pess_priors_qv_summs$valence <- factor(pess_priors_qv_summs$valence, levels=c("reward", "punishment"))
+```
+
+M7: Q nothing varied, decay to 0  
+```{r}
+naive_priors_qv_summs <- m4_sims_s1 %>% filter(probability=="90-10") %>% 
+  group_by(valence, trial_within_condition) %>% 
+  summarize(m_corr=mean(sim_correct_Q_vals), m_incorr=mean(sim_incorrect_Q_vals)) %>% 
+  mutate(diff=m_corr-m_incorr)
+naive_priors_qv_summs$valence <- factor(naive_priors_qv_summs$valence, levels=c("reward", "punishment"))
+```
+
+Break down into correct/incorrect  plots  
+```{r}
+ggplot(pess_priors_qv_summs,   
+       aes(x=trial_within_condition, y=m_corr, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ valence) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.8, color="black", size=1.5, linetype="longdash") +
+  # geom_hline(yintercept=.81, color="red", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("") +
+  ggtitle("Correct") +
+  xlab("Stim iteration") + ylim(-1, 1)
+```
+
+```{r}
+ggplot(naive_priors_qv_summs,   
+       aes(x=trial_within_condition, y=m_corr, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ valence) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.8, color="black", size=1.5, linetype="longdash") +
+  # geom_hline(yintercept=.81, color="red", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("") +
+  ggtitle("Correct") +
+  xlab("Stim iteration") + ylim(-1, 1)
+```
+
+
+```{r}
+ggplot(pess_priors_qv_summs,   
+       aes(x=trial_within_condition, y=m_incorr, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ valence) + 
+  scale_color_manual(values=c("blue", "red")) +
+  #geom_hline(yintercept=.8, color="black", size=1.5, linetype="longdash") +
+  # geom_hline(yintercept=.81, color="red", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("") +
+  ggtitle("Incorrect") +
+  xlab("Stim iteration") + ylim(-1, 1)
+```
+
+```{r}
+ggplot(naive_priors_qv_summs,   
+       aes(x=trial_within_condition, y=m_incorr, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ valence) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.8, color="black", size=1.5, linetype="longdash") +
+  # geom_hline(yintercept=.81, color="red", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("") +
+  ggtitle("Incorrect") +
+  xlab("Stim iteration") + ylim(-1, 1)
+```
+
+
+
+
+```{r}
+pess_plot <- ggplot(pess_priors_qv_summs,   
+       aes(x=trial_within_condition, y=diff, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ valence) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.8, color="black", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("Q-value Difference: \n Correct vs. Incorrect") +
+  ggtitle("Pessimistic Priors") +
+  xlab("Stim iteration") + ylim(0, 1)
+```
+```{r}
+naive_plot <- ggplot(naive_priors_qv_summs,   
+       aes(x=trial_within_condition, y=diff, color=valence)) +
+  geom_hline(yintercept=0, color="black", size=2) + 
+  geom_line(size=3) + facet_wrap( ~ valence) + 
+  scale_color_manual(values=c("blue", "red")) +
+  geom_hline(yintercept=.8, color="black", size=1.5, linetype="longdash") +
+  ga + ap + tol + ft + 
+  theme(plot.title = element_text(size = 30, hjust = .5)) +
+  ylab("") +
+  ggtitle("Naive Priors (All Zero)") +
+  xlab("Stim iteration") + ylim(0, 1)
+```
+
+```{r}
+simple_qv_plots_comb <- pess_plot + naive_plot
+```
+```{r, fig.width=8, fig.height=5}
+simple_qv_plots_comb 
+```
+
+No powerpoint — loaded directly into supplemental  
+
+```{r}
+#ggsave("../paper/figs/fig_parts/simple_qv_plots_comb.png", simple_qv_plots_comb, height=7, width=14, dpi=700)
+```
+
+
+# PST/Stimulus valuation phase analyses  
+
+Used rew history because Q-values are for specific Q(s,a)s whereas selection in the PST phase is between stimuli ie. Q(s, :)   
+
+
+```{r}
+# Take just the trials within condition   
+within_cond_pst_s1 <- s1_pst %>% filter(test_condition == "cogn_cogn" | test_condition == "overt_overt")
+within_cond_pst_s1$test_condition <- factor(within_cond_pst_s1$test_condition, levels=c("overt_overt", "cogn_cogn"))
+contrasts(within_cond_pst_s1$test_condition) <- c(-.5, .5)
+head(within_cond_pst_s1$test_condition)
+```
+
+
+```{r}
+# Both singular  
+# summary(m0_s1 <- glmer(resp_num ~  scale(left_min_right) + ( scale(left_min_right)|ID),
+#           data=within_cond_pst_s1, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+# 
+# summary(m0_s1 <- glmer(resp_num ~  scale(left_min_right)*test_condition + (scale(left_min_right) |ID),
+#           data=within_cond_pst_s1, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+Using model without random intercepts because not singular  
+```{r}
+summary(m0_s1 <- glmer(resp_num ~  scale(left_min_right) + (0 + scale(left_min_right)|ID),
+          data=within_cond_pst_s1, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m1_s1 <- glmer(resp_num ~  scale(left_min_right)*test_condition + (0 + scale(left_min_right) |ID),
+          data=within_cond_pst_s1, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+```{r}
+# Take just the trials within condition   
+within_cond_pst_s2 <- s2_pst %>% filter(test_condition == "cognitive_cognitive" | test_condition == "overt_overt")
+within_cond_pst_s2$test_condition <- 
+  factor(within_cond_pst_s2$test_condition, levels=c("overt_overt", "cognitive_cognitive"))
+contrasts(within_cond_pst_s2$test_condition) <- c(-.5, .5)
+head(within_cond_pst_s2$test_condition)
+```
+
+Use the comparable model  
+```{r}
+summary(m0_s2 <- glmer(resp_num ~  scale(left_min_right) + (0 + scale(left_min_right)|ID),
+          data=within_cond_pst_s2, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m1_s2 <- glmer(resp_num ~  scale(left_min_right)*test_condition + (0 + scale(left_min_right) |ID),
+          data=within_cond_pst_s2, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+```{r}
+p_s1 <- 
+  sjPlot::plot_model(m1_s1, type="pred", terms = c("left_min_right [all]", "test_condition"))
+
+
+p_fin_1 <- p_s1 + ap + tp + ga + 
+  xlab("Left minus right reward history") + ylab("") + ggtitle("") + 
+  theme(plot.title = element_text(hjust=0)) +
+  ylab("Chance of picking left") +
+   xlab("Left minus right reward history") +
+  ggtitle("Predicted probabilities") + 
+  scale_color_manual(values=c("orange", "purple"), labels=c("overt-overt", "cognitive-cognitive")) + tol
+
+```
+
+
+```{r}
+p_s2 <- 
+  sjPlot::plot_model(m1_s2, type="pred", terms = c("left_min_right [all]", "test_condition"))
+
+
+p_fin_s2 <- p_s2 + ap + tp + ga + 
+  xlab("Left minus right reward history") + ylab("") + ggtitle("") + 
+  theme(plot.title = element_text(hjust=0)) +
+  ylab("Chance of picking left") +
+   xlab("Left minus right reward history") +
+  #ggtitle("Predicted probabilities") + 
+  scale_color_manual(values=c("orange", "purple"), labels=c("overt-overt", "cognitive-cognitive")) +
+  theme(legend.text = element_text(size = 18),
+               legend.title = element_blank(),
+               legend.key.size = unit(1.3, 'lines'))
+
+```
+```{r, fig.height=4, fig.width=10}
+p_fin_1 + p_fin_s2
+```
+Mixed test phase  
+
+```{r}
+unique(s1_pst$test_condition)
+mix_s1 <- s1_pst %>% filter(test_condition == "overt_cogn")
+```
+
+```{r}
+# If cognitive is on the left and they chose left then they chose cognitive  
+mix_s1[mix_s1$left_training_cond=="cognTraining", "chose_cognitive"] <- 
+  if_else(mix_s1[mix_s1$left_training_cond=="cognTraining", "response"]=="left", 1, 0)
+
+# If cognitive is on the right and they chose right then they chose cognitive
+mix_s1[mix_s1$right_training_cond=="cognTraining", "chose_cognitive"] <- 
+  if_else(mix_s1[mix_s1$right_training_cond=="cognTraining", "response"]=="right", 1, 0)
+```
+
+```{r}
+table(mix_s1$chose_cognitive)[2]/sum(table(mix_s1$chose_cognitive))
+```
+
+```{r}
+unique(s2_pst$test_condition)
+mix_s2 <- s2_pst %>% filter(test_condition == "overt_cognitive")
+```
+
+```{r}
+# If cognitive is on the left and they chose left then they chose cognitive  
+mix_s2[mix_s2$left_training_cond=="cognitive", "chose_cognitive"] <- 
+  if_else(mix_s2[mix_s2$left_training_cond=="cognitive", "response"]=="left", 1, 0)
+
+# If cognitive is on the right and they chose right then they chose cognitive
+mix_s2[mix_s2$right_training_cond=="cognitive", "chose_cognitive"] <- 
+  if_else(mix_s2[mix_s2$right_training_cond=="cognitive", "response"]=="right", 1, 0)
+```
+
+```{r}
+table(mix_s2$chose_cognitive)[2]/sum(table(mix_s2$chose_cognitive))
+```
+
+
+```{r}
+mixed_summs_s1 <- mix_s1 %>% group_by(choice_type_plotting) %>% 
+  summarize(m=mean(chose_cognitive), n())
+mixed_summs_s1
+```
+
+```{r}
+mixed_summs_s2 <- mix_s2 %>% group_by(choice_type_plotting) %>% 
+  summarize(m=mean(chose_cognitive), n())
+mixed_summs_s2
+```
+
+
+```{r}
+summary(choice_effect_s1 <- glmer(chose_cognitive ~  1 + ( 1 |ID),
+          data=mix_s1, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(choice_effect_s2 <- glmer(chose_cognitive ~  1 + ( 1|ID),
+          data=mix_s2, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+
+# Questionnaires   
+
+```{r}
+s1_qs <- read.csv("../data/cleaned_files/s1_qs_deidentified.csv")
+s2_qs <- read.csv("../data/cleaned_files/s2_qs_deidentified.csv")
+```
+
+
+Exclude pts who answered both catch questions incorrectly  
+
+S1 all correct so no exclusions  
+```{r}
+table(s1_qs$Q6_20) # All correct
+table(s1_qs$Q7_19) # All correct
+```
+
+```{r}
+table(s2_qs$Q6_20) # All correct
+table(s2_qs$Q7_19) # One pt incorrect but they answered the other catch item correctly, so retained (given recs in lit that excluding on a single catch item can bias results)
+#s2_qs %>% filter(Q7_19 == "Very true for me")
+```
+
+*S1 questionnaires*    
+
+Get and recode PTQ and RRS  
+
+```{r}
+s1_ptq <- s1_qs %>% select(contains("Q2_")) %>% setNames(paste0("PTQ_", 1:15))
+s1_ptq$ID <- s1_qs$ID
+s1_ptq_copy <- s1_ptq
+s1_ptq_copy$ID <- s1_qs$ID
+s1_ptq[s1_ptq=="Never"] <- 0
+s1_ptq[s1_ptq=="Rarely"] <- 1
+s1_ptq[s1_ptq=="Sometimes"] <- 2 
+s1_ptq[s1_ptq=="Often"] <- 3
+s1_ptq[s1_ptq=="Almost always"] <- 4
+```
+
+
+```{r}
+s1_rrs <- 
+  s1_qs %>% select(contains("Q8_")) %>% setNames(paste0("RRS_", 1:10))
+s1_rrs$ID <- s1_qs$ID
+s1_rrs_copy <- s1_rrs
+s1_rrs_copy$ID <- s1_qs$ID
+s1_rrs[s1_rrs=="Almost never"] <- 1
+s1_rrs[s1_rrs=="Sometimes"] <- 2
+s1_rrs[s1_rrs=="Often"] <- 3
+s1_rrs[s1_rrs=="Almost always"] <- 4
+```
+
+Drop the 1 pt who skipped all  items  (leaving n=122 completers for study 1)  
+
+```{r}
+s1_ptq <- s1_ptq[-66, ]
+s1_rrs <- s1_rrs[-66, ]
+```
+
+Convert to numeric  
+```{r}
+s1_ptq_num <- foreach (i = 1:ncol(s1_ptq)) %do% {
+  data.frame(as.numeric(unlist(s1_ptq[i]))) %>% setNames(names(s1_ptq[i]))
+}%>% bind_cols()
+```
+
+Just 4 data points (< .1% of data) missing for remaining, so mean impute these  
+```{r}
+length(which(is.na(s1_ptq_num[, 1:15])))
+length(which(is.na(s1_ptq_num[, 1:15])))/(dim(s1_ptq_num[, 1:15])[1]*dim(s1_ptq_num[, 1:15])[2]) 
+```
+
+```{r}
+s1_ptq_final <- foreach (i = 1:nrow(s1_ptq_num)) %do% {
+  if (any(is.na(s1_ptq_num[i, ]))) {
+    s1_ptq_num[i, is.na(s1_ptq_num[i, ])] <- mean(unlist(s1_ptq_num[i, ]), na.rm=TRUE)
+  }
+s1_ptq_num[i, ]
+}%>% bind_rows()
+```
+
+
+```{r}
+hist(rowSums(s1_ptq_final[, 1:15]), breaks=25)
+s1_ptq_final$ptq_sum <- rowSums(s1_ptq_final[, 1:15])
+```
+
+Spot check IDs lined up properly  
+
+```{r}
+# s1_ptq_final %>% filter(ID == 22)
+# s1_ptq_copy %>% filter(ID == 22)
+# s1_qs %>% filter(ID == 22)
+# s1_ptq_final %>% filter(ID == 104)
+# s1_ptq_copy %>% filter(ID == 104)
+# s1_qs %>% filter(ID == 104)
+```
+
+
+
+Convert to numeric  
+```{r}
+s1_rrs_num <- foreach (i = 1:ncol(s1_rrs)) %do% {
+  data.frame(as.numeric(unlist(s1_rrs[i]))) %>% setNames(names(s1_rrs[i]))
+}%>% bind_cols()
+```
+
+```{r}
+length(which(is.na(s1_rrs_num[, 1:10])))
+length(which(is.na(s1_rrs_num[, 1:10])))/(dim(s1_rrs_num[, 1:10])[1]*dim(s1_rrs_num[, 1:10])[2]) 
+```
+
+```{r}
+s1_rrs_final <- foreach (i = 1:nrow(s1_rrs_num)) %do% {
+  if (any(is.na(s1_rrs_num[i, ]))) {
+    s1_rrs_num[i, is.na(s1_rrs_num[i, ])] <- mean(unlist(s1_rrs_num[i, ]), na.rm=TRUE)
+  }
+s1_rrs_num[i, ]
+}%>% bind_rows()
+```
+
+Spot check  
+
+```{r}
+# s1_rrs_final %>% filter(ID == 106)
+# s1_rrs_copy %>% filter(ID == 106)
+# s1_qs %>% filter(ID == 106)
+```
+
+
+
+```{r}
+hist(rowSums(s1_rrs_final[, 1:10]), breaks=25)
+s1_rrs_final$rrs_sum <- rowSums(s1_rrs_final[, 1:10])
+```
+
+
+Sanity check RRS and PTQ are strongly correlated  
+```{r}
+ComparePars(s1_rrs_final$rrs_sum, s1_ptq_final$ptq_sum, use_identity_line = 0)
+```
+
+
+Reduced to just matching IDs  
+```{r}
+m1_s1_model_red <- m1_study1_eb %>% filter(ID %in% s1_ptq_final$ID)
+m1_s1_model_red$c_min_o_phi <- m1_s1_model_red$cog_phi - m1_s1_model_red$overt_phi
+```
+
+```{r}
+assert(all(m1_s1_model_red$ID==s1_ptq_final$ID))
+assert(all(m1_s1_model_red$ID==s1_rrs_final$ID))
+```
+
+PTQ  
+```{r}
+ComparePars(m1_s1_model_red$c_min_o_phi, s1_ptq_final$ptq_sum, use_identity_line = 0)
+ComparePars(m1_s1_model_red$cog_phi, s1_ptq_final$ptq_sum, use_identity_line = 0)
+ComparePars(m1_s1_model_red$overt_phi, s1_ptq_final$ptq_sum, use_identity_line = 0)
+```
+
+
+Same basic pattern for RRS  
+```{r}
+ComparePars(m1_s1_model_red$c_min_o_phi, s1_rrs_final$rrs_sum, use_identity_line = 0)
+# Would expect higher decay to positively correlate w more brooding — instead small and ns neg  
+ComparePars(m1_s1_model_red$cog_phi, s1_rrs_final$rrs_sum, use_identity_line = 0)
+ComparePars(m1_s1_model_red$overt_phi, s1_rrs_final$rrs_sum, use_identity_line = 0)
+```
+
+
+*s2 questionnaires*      
+
+
+Get and recode PTQ and RRS   
+
+```{r}
+s2_ptq <- s2_qs %>% select(contains("Q2_")) %>% setNames(paste0("PTQ_", 1:15))
+s2_ptq$ID <- s2_qs$ID
+s2_ptq_copy <- s2_ptq
+s2_ptq_copy$ID <- s2_qs$ID
+s2_ptq[s2_ptq=="Never"] <- 0
+s2_ptq[s2_ptq=="Rarely"] <- 1
+s2_ptq[s2_ptq=="Sometimes"] <- 2 
+s2_ptq[s2_ptq=="Often"] <- 3
+s2_ptq[s2_ptq=="Almost always"] <- 4
+```
+
+
+```{r}
+s2_rrs <- 
+  s2_qs %>% select(contains("Q8_")) %>% setNames(paste0("RRS_", 1:10))
+s2_rrs$ID <- s2_qs$ID
+s2_rrs_copy <- s2_rrs
+s2_rrs_copy$ID <- s2_qs$ID
+s2_rrs[s2_rrs=="Almost never"] <- 1
+s2_rrs[s2_rrs=="Sometimes"] <- 2
+s2_rrs[s2_rrs=="Often"] <- 3
+s2_rrs[s2_rrs=="Almost always"] <- 4
+```
+
+No pts with skips  
+
+Convert to numeric  
+```{r}
+s2_ptq_num <- foreach (i = 1:ncol(s2_ptq)) %do% {
+  data.frame(as.numeric(unlist(s2_ptq[i]))) %>% setNames(names(s2_ptq[i]))
+}%>% bind_cols()
+```
+
+
+```{r}
+length(which(is.na(s2_ptq_num[, 1:15])))
+length(which(is.na(s2_ptq_num[, 1:15])))/(dim(s2_ptq_num[, 1:15])[1]*dim(s2_ptq_num[, 1:15])[2]) 
+```
+
+```{r}
+s2_ptq_final <- foreach (i = 1:nrow(s2_ptq_num)) %do% {
+  if (any(is.na(s2_ptq_num[i, ]))) {
+    s2_ptq_num[i, is.na(s2_ptq_num[i, ])] <- mean(unlist(s2_ptq_num[i, ]), na.rm=TRUE)
+  }
+s2_ptq_num[i, ]
+}%>% bind_rows()
+```
+
+
+```{r}
+hist(rowSums(s2_ptq_final[, 1:15]), breaks=25)
+s2_ptq_final$ptq_sum <- rowSums(s2_ptq_final[, 1:15])
+```
+
+Spot check IDs lined up properly  
+
+```{r}
+# s2_ptq_final %>% filter(ID == 95)
+# s2_ptq_copy %>% filter(ID == 95)
+# s2_qs %>% filter(ID == 95)
+```
+
+Convert to numeric  
+```{r}
+s2_rrs_num <- foreach (i = 1:ncol(s2_rrs)) %do% {
+  data.frame(as.numeric(unlist(s2_rrs[i]))) %>% setNames(names(s2_rrs[i]))
+}%>% bind_cols()
+```
+
+```{r}
+length(which(is.na(s2_rrs_num[, 1:10])))
+length(which(is.na(s2_rrs_num[, 1:10])))/(dim(s2_rrs_num[, 1:10])[1]*dim(s2_rrs_num[, 1:10])[2]) 
+```
+
+```{r}
+s2_rrs_final <- foreach (i = 1:nrow(s2_rrs_num)) %do% {
+  if (any(is.na(s2_rrs_num[i, ]))) {
+    s2_rrs_num[i, is.na(s2_rrs_num[i, ])] <- mean(unlist(s2_rrs_num[i, ]), na.rm=TRUE)
+  }
+s2_rrs_num[i, ]
+}%>% bind_rows()
+```
+
+Spot check  
+
+```{r}
+# s2_rrs_final %>% filter(ID == 128)
+# s2_rrs_copy %>% filter(ID == 128)
+# s2_qs %>% filter(ID == 128)
+```
+
+
+
+```{r}
+hist(rowSums(s2_rrs_final[, 1:10]), breaks=25)
+s2_rrs_final$rrs_sum <- rowSums(s2_rrs_final[, 1:10])
+```
+
+
+Sanity check RRS and PTQ are strongly correlated  
+```{r}
+ComparePars(s2_rrs_final$rrs_sum, s2_ptq_final$ptq_sum, use_identity_line = 0)
+```
+
+
+Reduced to just matching IDs  
+```{r}
+m1_s2_model_red <- m1_study2_eb %>% filter(ID %in% s2_ptq_final$ID)
+m1_s2_model_red$c_min_o_phi <- m1_s2_model_red$cog_phi - m1_s2_model_red$overt_phi
+```
+
+```{r}
+assert(all(m1_s2_model_red$ID==s2_ptq_final$ID))
+assert(all(m1_s2_model_red$ID==s2_rrs_final$ID))
+```
+
+PTQ  
+```{r}
+ComparePars(m1_s2_model_red$c_min_o_phi, s2_ptq_final$ptq_sum, use_identity_line = 0)
+ComparePars(m1_s2_model_red$cog_phi, s2_ptq_final$ptq_sum, use_identity_line = 0)
+ComparePars(m1_s2_model_red$overt_phi, s2_ptq_final$ptq_sum, use_identity_line = 0)
+```
+
+
+Same basic pattern for RRS  
+```{r}
+ComparePars(m1_s2_model_red$c_min_o_phi, s2_rrs_final$rrs_sum, use_identity_line = 0)
+# Would expect higher decay to positively correlate w more brooding — instead small and ns neg  
+ComparePars(m1_s2_model_red$cog_phi, s2_rrs_final$rrs_sum, use_identity_line = 0)
+ComparePars(m1_s2_model_red$overt_phi, s2_rrs_final$rrs_sum, use_identity_line = 0)
+```
+
+

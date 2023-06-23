@@ -1,0 +1,1770 @@
+---
+title: "Results for Hitchcock & Frank 2023"
+date: "`r Sys.Date()`"
+author: "Peter Frank Hitchcock - LNCC Lab, Brown University"
+output:
+  html_document:
+    toc: true
+---
+
+
+```{r}
+sapply(c(
+         "rjson", 
+         "data.table", 
+         "dplyr", 
+         "ggplot2", 
+         "stringr", 
+         "purrr", 
+         "foreach", 
+         "doParallel", 
+         "patchwork", 
+         "lme4", 
+         "lmerTest",
+         "testit",
+         "ggpubr",
+         "latex2exp"
+         ), 
+       require, character=TRUE)
+sf <- function() sapply(paste0("./Functions/", list.files("./Functions/", recursive=TRUE)), source) # Source all fxs
+sf()
+DefPlotPars()
+registerDoParallel(cores=round(detectCores()*2/3))
+```
+
+# Load data from studies 1 and 2  
+ 
+```{r}
+s1_train <- read.csv("../data/cleaned_files/s1_train_with_delay_deident.csv")
+  #read.csv("../data/cleaned_files/s1_train_deident.csv") %>% rename(ID=deident_ID) %>% relocate(ID)
+s1_sit <- read.csv("../data/cleaned_files/s1_SIT_deident.csv") %>% rename(ID=deident_ID) %>% relocate(ID)
+s2_train <- read.csv("../data/cleaned_files/s2_train_with_delay_deident.csv") #read.csv("../data/cleaned_files/s2_train_deident.csv") %>% rename(ID=deident_ID) %>% relocate(ID)
+s2_sit <- read.csv("../data/cleaned_files/s2_sit_deident_corrected_names.csv") 
+```
+
+
+Harmonize variables and create some separate vars  
+
+```{r}
+# Study 2 harmonize  
+s2_sit[s2_sit$condition=="cogn", "condition"] <- "cognitive" 
+s2_train[s2_train$trial_within_condition <= 20, "block"] <- 1
+s2_train[s2_train$trial_within_condition > 20, "block"] <- 2
+
+s1_sit$probability <- factor(unlist(map(strsplit(as.character(s1_sit$valence_and_probability), "_"), 1)))
+s1_sit$valence <- factor(unlist(map(strsplit(as.character(s1_sit$valence_and_probability), "_"), 2)))
+
+s2_sit$probability <- factor(unlist(map(strsplit(as.character(s2_sit$valence_and_probability), "_"), 1)))
+s2_sit$valence <- factor(unlist(map(strsplit(as.character(s2_sit$valence_and_probability), "_"), 2)))
+```
+
+Define paths and functions  
+```{r}
+# MLE results  
+allp <- "../model_res/opts_mle_paper_final/all/"
+# Empirical Bayes results 
+bp <- "../model_res/opts_mle_paper_final/best/"
+# Simulations  
+sp <- "../model_res/sims_clean/sims_from_mle/"
+# Read model function 
+rm <- function(path, model_str) read.csv(paste0(path, model_str))
+```
+
+# Behavioral Results for Learning and Test phase  
+
+## Visualization  
+
+Summarize training mean and within-subject SEM  
+
+```{r}
+s1_train_summs <- s1_train %>% group_by(condition, ID) %>%  summarize(m=mean(correct))
+
+s1_tr_summs <- Rmisc::summarySEwithin(s1_train_summs,
+                        measurevar = "m",
+                        withinvars = "condition", 
+                        idvar = "ID")
+
+s2_train_summs <- s2_train %>% group_by(condition, ID) %>%  summarize(m=mean(correct))
+
+s2_tr_summs <- Rmisc::summarySEwithin(s2_train_summs,
+                        measurevar = "m",
+                        withinvars = "condition", 
+                        idvar = "ID")
+
+s2_tr_summs <- Rmisc::summarySEwithin(s2_train_summs,
+                        measurevar = "m",
+                        withinvars = "condition", 
+                        idvar = "ID")
+
+s1_test_summs <- s1_sit %>% group_by(condition, ID) %>%  summarize(m=mean(correct))
+
+s1_te_summs <- Rmisc::summarySEwithin(s1_test_summs,
+                        measurevar = "m",
+                        withinvars = "condition", 
+                        idvar = "ID")
+
+s2_test_summs <- s2_sit %>% group_by(condition, ID) %>%  summarize(m=mean(correct))
+
+s2_te_summs <- Rmisc::summarySEwithin(s2_test_summs,
+                        measurevar = "m",
+                        withinvars = "condition", 
+                        idvar = "ID")
+
+s2_te_summs <- Rmisc::summarySEwithin(s2_test_summs,
+                        measurevar = "m",
+                        withinvars = "condition", 
+                        idvar = "ID")
+```
+
+
+```{r}
+s1_tr_summs$experiment <- 1
+s1_tr_summs$phase <- "Learning"
+
+s2_tr_summs$experiment <- 2
+s2_tr_summs$phase <- "Learning"
+
+s1_te_summs$experiment <- 1
+s1_te_summs$phase <- "Test"
+
+s2_te_summs$experiment <- 2
+s2_te_summs$phase <- "Test"
+
+comb_summs <- rbind(s1_tr_summs, s2_tr_summs)
+comb_summs$experiment <- factor(comb_summs$experiment)
+
+comb_te_summs <- rbind(s1_te_summs, s2_te_summs)
+comb_te_summs$experiment <- factor(comb_te_summs$experiment)
+```
+
+```{r}
+a <- ggplot(comb_summs, 
+      aes(x=experiment, y=m, group=condition, fill=condition)) + 
+      geom_hline(yintercept=c(seq(.6, .8, .1)), size=.3) + 
+      geom_hline(yintercept=.5, size=2) + 
+      scale_fill_manual(values=c("purple", "orange")) +
+      geom_errorbar(aes(x=experiment, ymin=m-se, ymax=m+se,
+                        group=condition), 
+                    inherit.aes=FALSE, size=1.5, width=.25, position = position_dodge(width = .3)) +
+  geom_point(size=4, color="black", pch=21, position = position_dodge(width = .3)) + ga + ap + tol +
+  xlab("") + ylab("Proportion correct") + ggtitle("Learning") + tp +
+  ylim(c(.45, .82)) + theme(axis.text.x = element_text(size=30))
+a
+```
+
+```{r}
+b <- ggplot(comb_te_summs, 
+      aes(x=experiment, y=m, group=condition, fill=condition)) + 
+      geom_hline(yintercept=c(seq(.6, .8, .1)), size=.3) + 
+      geom_hline(yintercept=.5, size=2) + 
+      scale_fill_manual(values=c("purple", "orange")) +
+      geom_errorbar(aes(x=experiment, ymin=m-se, ymax=m+se,
+                        group=condition), 
+                    inherit.aes=FALSE, size=1.5, width=.25, position = position_dodge(width = .3)) +
+  geom_point(size=3, color="black", pch=21, position = position_dodge(width = .3)) + ga + ap + tol + tp + 
+  #lp + Used to cut legend and then turned off so size is comparable 
+  xlab("") + ylab("") + ggtitle("Test") +
+  ylim(c(.45, .82)) + theme(axis.text.x = element_text(size=30))
+b
+```
+
+```{r}
+perf_comb <- a + b
+```
+
+
+```{r, height=7, width=10}
+perf_comb
+```
+
+```{r}
+#ggsave("../paper/figs/fig_parts/perf_plot.png", perf_comb, height=6, width=10, dpi=700)
+```
+
+## Statistical analyses  
+
+Create sum contrast codes  
+
+```{r}
+# Specify overt as baseline factor so that negative effect corresponds to worst performance  
+s1_train$cond_cc <- factor(s1_train$condition, levels=c("overt", "cognitive"))
+contrasts(s1_train$cond_cc) <- c(-.5, .5)
+#head(s1_train$cond_cc)
+
+s2_train$cond_cc <- factor(s2_train$condition, levels=c("overt", "cognitive"))
+contrasts(s2_train$cond_cc) <- c(-.5, .5)
+
+s1_sit$cond_cc <- factor(s1_sit$condition, levels=c("overt", "cognitive"))
+contrasts(s1_sit$cond_cc) <- c(-.5, .5)
+
+s2_sit$cond_cc <- factor(s2_sit$condition, levels=c("overt", "cognitive"))
+contrasts(s2_sit$cond_cc) <- c(-.5, .5)
+```
+
+
+
+### Regressions of condition differences in performance    
+
+
+Experiment 1  — Learning and test models   
+
+
+```{r}
+summary(m1_train_full_regr <- glmer(correct ~  
+                                      cond_cc + scale(trial_within_condition) + 
+                                      (cond_cc +  scale(trial_within_condition) |ID), 
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m1_test_full_regr <- glmer(correct ~  cond_cc + (cond_cc|ID), 
+          data=s1_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+Experiment 2  — Learning and test models    
+
+
+```{r}
+summary(m2_train_full_regr <- glmer(correct ~  
+                                      cond_cc + scale(trial_within_condition) + 
+                                      (cond_cc +  scale(trial_within_condition) | ID), 
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m2_test_full_regr <- glmer(correct ~  cond_cc + (cond_cc|ID), 
+          data=s2_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+```{r}
+car::vif(m1_train_full_regr)
+car::vif(m2_train_full_regr)
+```
+
+Robustness check 1: Same models with just random intercepts instead of both random intercepts and slopes   
+
+
+Experiment 1  
+
+
+```{r}
+summary(m1_train_ri_only_regr <- glmer(correct ~  
+                                      cond_cc + scale(trial_within_condition) + 
+                                      (1 |ID), 
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m1_test_ri_only_regr <- glmer(correct ~  cond_cc + (1 |ID), 
+          data=s1_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+Experiment 2   
+
+
+```{r}
+summary(m2_train_ri_only_regr <- glmer(correct ~  
+                                      cond_cc + scale(trial_within_condition) + 
+                                      (1  | ID), 
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m2_test_ri_only_regr <- glmer(correct ~  cond_cc + (1 |ID), 
+          data=s2_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+Robustness check 2: Learning models with the time covariate removed   
+
+
+Experiments 1 and 2    
+
+
+
+```{r}
+summary(m1_train_no_cov_regr <- glmer(correct ~  
+                                      cond_cc + 
+                                      (cond_cc |ID), 
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m2_train_no_cov_regr <- glmer(correct ~  
+                                      cond_cc + 
+                                      (cond_cc | ID), 
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+```
+
+
+```{r}
+sjPlot::tab_model(m1_train_full_regr)
+```
+
+```{r}
+sjPlot::tab_model(m2_train_full_regr)
+```
+
+```{r}
+sjPlot::tab_model(m1_test_full_regr)
+```
+
+```{r}
+sjPlot::tab_model(m2_test_full_regr)
+```
+
+
+Robustness check 3: Covariate for answer type   
+
+
+```{r}
+s1_train[s1_train$response=="sum", "resp_type_cc_cog"] <- .5
+s1_train[s1_train$response=="difference", "resp_type_cc_cog"] <- -.5
+s1_train[s1_train$response=="top", "resp_type_cc_cog"] <- 0
+s1_train[s1_train$response=="bottom", "resp_type_cc_cog"] <- 0
+
+
+s1_train[s1_train$response=="top", "resp_type_cc_overt"] <- .5
+s1_train[s1_train$response=="bottom", "resp_type_cc_overt"] <- -.5
+s1_train[s1_train$response=="sum", "resp_type_cc_overt"] <- 0
+s1_train[s1_train$response=="difference", "resp_type_cc_overt"] <- 0
+
+s1_sit[s1_sit$resp_as_category=="sum", "resp_type_cc_cog"] <- .5
+s1_sit[s1_sit$resp_as_category=="difference", "resp_type_cc_cog"] <- -.5
+s1_sit[s1_sit$resp_as_category=="top", "resp_type_cc_cog"] <- 0
+s1_sit[s1_sit$resp_as_category=="bottom", "resp_type_cc_cog"] <- 0
+
+s1_sit[s1_sit$resp_as_category=="top", "resp_type_cc_overt"] <- .5
+s1_sit[s1_sit$resp_as_category=="bottom", "resp_type_cc_overt"] <- -.5
+s1_sit[s1_sit$resp_as_category=="sum", "resp_type_cc_overt"] <- 0
+s1_sit[s1_sit$resp_as_category=="difference", "resp_type_cc_overt"] <- 0
+
+s2_train[s2_train$response=="alphabetize", "resp_type_cc_cog"] <- .5
+s2_train[s2_train$response=="rev_alphabetize", "resp_type_cc_cog"] <- -.5
+s2_train[s2_train$response=="slash", "resp_type_cc_cog"] <- 0
+s2_train[s2_train$response=="backslash", "resp_type_cc_cog"] <- 0
+
+s2_train[s2_train$response=="slash", "resp_type_cc_overt"] <- .5
+s2_train[s2_train$response=="backslash", "resp_type_cc_overt"] <- -.5
+s2_train[s2_train$response=="alphabetize", "resp_type_cc_overt"] <- 0
+s2_train[s2_train$response=="rev_alphabetize", "resp_type_cc_overt"] <- 0
+
+s2_sit[s2_sit$resp_as_category=="alphabetize", "resp_type_cc_cog"] <- .5
+s2_sit[s2_sit$resp_as_category=="rev_alphabetize", "resp_type_cc_cog"] <- -.5
+s2_sit[s2_sit$resp_as_category=="slash", "resp_type_cc_cog"] <- 0
+s2_sit[s2_sit$resp_as_category=="backslash", "resp_type_cc_cog"] <- 0
+
+s2_sit[s2_sit$resp_as_category=="slash", "resp_type_cc_overt"] <- .5
+s2_sit[s2_sit$resp_as_category=="backslash", "resp_type_cc_overt"] <- -.5
+s2_sit[s2_sit$resp_as_category=="alphabetize", "resp_type_cc_overt"] <- 0
+s2_sit[s2_sit$resp_as_category=="rev_alphabetize", "resp_type_cc_overt"] <- 0
+
+table(s1_train$resp_type_cc_cog)
+table(s1_train$resp_type_cc_overt)
+table(s1_sit$resp_type_cc_cog)
+table(s1_sit$resp_type_cc_overt)
+
+table(s2_train$resp_type_cc_cog)
+table(s2_train$resp_type_cc_overt)
+table(s2_sit$resp_type_cc_cog)
+table(s2_sit$resp_type_cc_overt)
+```
+
+
+
+Separately coded contrast variables for cog and overt. Random slopes of these removed for test bc singular (which makes sense bc of few observations/subj)  
+
+```{r}
+summary(m1_train_full_regr_at <- glmer(correct ~  
+                                      cond_cc + scale(trial_within_condition) + resp_type_cc_cog + resp_type_cc_overt +
+                                      (cond_cc +  scale(trial_within_condition) + resp_type_cc_cog + resp_type_cc_overt |ID), 
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+# Singular 
+# summary(m1_test_full_regr_at <- glmer(correct ~  cond_cc + resp_type_cc_cog + resp_type_cc_overt +
+#                                         (cond_cc + resp_type_cc_cog + resp_type_cc_overt |ID), 
+#           data=s1_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m1_test_full_regr_at <- glmer(correct ~  cond_cc + resp_type_cc_cog + resp_type_cc_overt +
+                                        (cond_cc  |ID), 
+          data=s1_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+
+```{r}
+summary(m2_train_full_regr_at <- glmer(correct ~  
+                                      cond_cc + scale(trial_within_condition) + resp_type_cc_cog + resp_type_cc_overt +
+                                      (cond_cc +  scale(trial_within_condition) + resp_type_cc_cog + resp_type_cc_overt |ID), 
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+# Singular  
+# summary(m2_test_full_regr_at <- glmer(correct ~  cond_cc + resp_type_cc_cog + resp_type_cc_overt +
+#                                         (cond_cc  + resp_type_cc_cog + resp_type_cc_overt  |ID), 
+#           data=s2_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m2_test_full_regr_at <- glmer(correct ~  cond_cc + resp_type_cc_cog + resp_type_cc_overt +
+                                        (cond_cc  |ID), 
+          data=s2_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+Robustness check 4: paired t-test on arcsine-transformed proportion data instead of mixed-effects model    
+
+```{r}
+s1_summs_id <- s1_train %>% group_by(condition, ID) %>% 
+   summarize(m=mean(correct)) 
+
+s2_summs_id <- s2_train %>% group_by(condition, ID) %>% 
+   summarize(m=mean(correct))
+
+s1_summs_test_id <- s1_sit %>% group_by(condition, ID) %>% 
+   summarize(m=mean(correct))
+
+s2_summs_test_id <- s2_sit %>% group_by(condition, ID) %>% 
+   summarize(m=mean(correct))
+```
+
+```{r}
+t.test(asin(sqrt(m)) ~ condition, data=s1_summs_id, paired=TRUE)
+t.test(asin(sqrt(m)) ~ condition, data=s2_summs_id, paired=TRUE)
+t.test(asin(sqrt(m)) ~ condition, data=s1_summs_test_id, paired=TRUE)
+t.test(asin(sqrt(m)) ~ condition, data=s2_summs_test_id, paired=TRUE)
+```
+
+
+### Delay effects   
+
+Create sum contrast codes for delay  
+
+```{r}
+# Specify overt as baseline factor so that negative effect corresponds to worst performance  
+s1_train$cond_cc <- factor(s1_train$condition, levels=c("overt", "cognitive"))
+contrasts(s1_train$cond_cc) <- c(-.5, .5)
+
+s2_train$cond_cc <- factor(s2_train$condition, levels=c("overt", "cognitive"))
+contrasts(s2_train$cond_cc) <- c(-.5, .5)
+```
+
+
+
+```{r}
+#head(factor(if_else(s1_train$delay==0, "no_delay", "delay"), levels=c("no_delay", "delay")))
+s1_train$delay_cc <- factor(if_else(s1_train$delay==0, "no_delay", "delay"), levels=c("no_delay", "delay"))
+contrasts(s1_train$delay_cc) <- c(-.5, .5)
+
+s2_train$delay_cc <- factor(if_else(s2_train$delay==0, "no_delay", "delay"), levels=c("no_delay", "delay"))
+contrasts(s2_train$delay_cc) <- c(-.5, .5)
+```
+
+Building up in complexity...  
+
+Effect of delay with no moderation  
+
+```{r}
+summary(m1_delay <- glmer(correct ~  delay_cc + (delay_cc|ID), 
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m2_delay <- glmer(correct ~  delay_cc + (delay_cc|ID), 
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+ 
+Now moderated by condition  
+
+```{r}
+#Singular for both 
+# summary(m1_delay_cond <- glmer(correct ~  delay_cc*cond_cc + (delay_cc*cond_cc|ID), 
+#           data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+# 
+# summary(m2_delay_cond <- glmer(correct ~  delay_cc*cond_cc + (delay_cc*cond_cc|ID), 
+#           data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+# Simplified  
+summary(m1_delay_cond <- glmer(correct ~  delay_cc*cond_cc + (delay_cc + cond_cc|ID),
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m2_delay_cond <- glmer(correct ~  delay_cc*cond_cc + (delay_cc + cond_cc|ID),
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+Model including appropriate covariates at the highest complexity that would fit (removed trial-within-cond random slope and delay*cond slope due to singular errors in studies 2 and 1 respectively)  
+
+```{r}
+# summary(m1_full_delay_cond <- glmer(correct ~  delay_cc*cond_cc + scale(trial_within_condition) +
+#                                  (delay_cc + cond_cc + scale(trial_within_condition)|ID),
+#           data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+# 
+# # Singular 
+# summary(m2_full_delay_cond <- glmer(correct ~  delay_cc*cond_cc + scale(trial_within_condition) +
+#                                  (delay_cc + cond_cc + scale(trial_within_condition)|ID),
+#           data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+# Also singular  
+# summary(m1_full_delay_cond <- glmer(correct ~  delay_cc*cond_cc + scale(trial_within_condition) +
+#                                  (delay_cc*cond_cc + 1|ID),
+#           data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m1_full_delay_cond <- glmer(correct ~  delay_cc*cond_cc + scale(trial_within_condition) +
+                                 (delay_cc + cond_cc |ID),
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+summary(m2_full_delay_cond <- glmer(correct ~  delay_cc*cond_cc + scale(trial_within_condition) +
+                                 (delay_cc + cond_cc|ID),
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+```{r}
+car::vif(m1_full_delay_cond)
+car::vif(m2_full_delay_cond)
+```
+
+### Heterogeneity in condition effect   
+
+*Calculate some bxal differences*    
+
+Study 1   
+
+```{r}
+s1_perf <- s1_train %>% group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_perf_s1 <- as.numeric(unlist(s1_perf[s1_perf$condition=="overt","m"]-
+                    s1_perf[s1_perf$condition=="cognitive", "m"]))
+
+# .. and test subject-level differences in performance  
+s1_perf_test <- s1_sit %>% group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_testperf_s1 <- as.numeric(unlist(s1_perf_test[s1_perf_test$condition=="overt","m"]-
+                    s1_perf_test[s1_perf_test$condition=="cognitive", "m"]))
+
+s1_perf_overall <- s1_train %>% group_by(ID) %>% summarize(m=mean(correct))
+s1_test_perf_overall <- s1_sit %>% group_by(ID) %>% summarize(m=mean(correct))
+
+# Modest correlations across conditions 
+cor.test(unlist(s1_perf[s1_perf$condition=="overt","m"]), unlist(s1_perf[s1_perf$condition=="cognitive","m"]))
+cor.test(unlist(s1_perf_test[s1_perf_test$condition=="overt","m"]), unlist(s1_perf_test[s1_perf_test$condition=="cognitive","m"]))
+```
+
+Examining if between-condition diffs are more common at the highest level of perf, because at lower ends more noise in bx. But not much relationship   
+
+
+```{r}
+cor.test(s1_perf_overall$m, o_min_c_perf_s1)
+ComparePars(s1_perf_overall$m, o_min_c_perf_s1, use_identity_line = 0)
+```
+
+Study 2   
+
+
+```{r}
+s2_perf <- s2_train %>% group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_perf_s2 <- as.numeric(unlist(s2_perf[s2_perf$condition=="overt","m"]-
+                    s2_perf[s2_perf$condition=="cognitive", "m"]))
+
+s2_perf_test <- s2_sit %>% group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_testperf_s2 <- as.numeric(unlist(s2_perf_test[s2_perf_test$condition=="overt","m"]-
+                    s2_perf_test[s2_perf_test$condition=="cognitive", "m"]))
+
+
+s2_perf_overall <- s2_train %>% group_by(ID) %>% summarize(m=mean(correct))
+s2_test_perf_overall <- s2_sit %>% group_by(ID) %>% summarize(m=mean(correct))
+
+cor.test(unlist(s2_perf[s2_perf$condition=="overt","m"]), unlist(s2_perf[s2_perf$condition=="cognitive","m"]))
+cor.test(unlist(s2_perf_test[s2_perf_test$condition=="overt","m"]), unlist(s2_perf_test[s2_perf_test$condition=="cognitive","m"]))
+```
+
+```{r}
+cor.test(s2_perf_overall$m, o_min_c_perf_s2)
+ComparePars(s2_perf_overall$m, o_min_c_perf_s2, use_identity_line = 0)
+```
+
+Invalid relationships to perf diffs  
+```{r}
+s1_o_inv <- s1_train %>% group_by(ID) %>% summarize(o_inv=mean(overt_invalid)) 
+s1_c_inv <- s1_train %>% group_by(ID) %>% summarize(c_inv=mean(cognitive_invalid)) 
+assert(all(s1_o_inv$ID==s1_c_inv$ID))
+s1_inv_diff <- s1_c_inv$c_inv-s1_o_inv$o_inv
+cor.test(o_min_c_perf_s1, s1_inv_diff)
+ComparePars(o_min_c_perf_s1, s1_inv_diff, use_identity_line = 0)
+```
+
+```{r}
+s2_o_inv <- s2_train %>% group_by(ID) %>% summarize(o_inv=mean(prop_invalid_overt)) 
+s2_c_inv <- s2_train %>% group_by(ID) %>% summarize(c_inv=mean(prop_invalid_cognitive)) 
+assert(all(s2_o_inv$ID==s2_c_inv$ID))
+s2_inv_diff <- s2_c_inv$c_inv-s2_o_inv$o_inv
+cor.test(o_min_c_perf_s2, s2_inv_diff)
+ComparePars(s2_inv_diff, o_min_c_perf_s2, use_identity_line = 0, xchar="cog minus overt invalid", ychar="overt minus cog correct")
+```
+
+Percent of pts who actually showing better performance in cognitive   
+
+Training and test study 1  
+```{r}
+# Study 1  
+length(which(o_min_c_perf_s1 < 0))/length(o_min_c_perf_s1)
+length(which(o_min_c_perf_s1 == 0))/length(o_min_c_perf_s1) # 2.4% show no diff  
+```
+```{r}
+length(which(o_min_c_testperf_s1 < 0))/length(o_min_c_testperf_s1)
+length(which(o_min_c_testperf_s1 == 0))/length(o_min_c_testperf_s1) 
+```
+
+Training and test study 2   
+
+```{r}
+length(which(o_min_c_perf_s2 < 0))/length(o_min_c_perf_s2)
+length(which(o_min_c_perf_s2 == 0))/length(o_min_c_perf_s2) # < 1% show no diff
+```
+```{r}
+length(which(o_min_c_testperf_s2 < 0))/length(o_min_c_testperf_s2)
+length(which(o_min_c_testperf_s2 == 0))/length(o_min_c_testperf_s2) 
+```
+
+
+
+# Modeling Results (Note: model numbers match those from `s.R` but not those used in paper...)     
+
+ ... because the paper numbering follows the logic of how presented there, and because we culled poor/uninformative/auxiliary models as developing the streamlined final set     
+
+
+## Model 1 — Q learner with different decay (phi). Includes eps, CK, block explor parameter  
+
+
+Numbers from before bug fix on the use of prior (3/23/23) dont use: 58986 | 52624 | 57510  | 74680
+```{r}
+m1_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior17352.csv")
+m1_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior58319.csv")
+
+m1_study1_eb <- rbind(m1_study1_eb_v1, m1_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m1_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior12123.csv")
+m1_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior74336.csv")
+
+m1_study2_eb <- rbind(m1_study2_eb_v1, m1_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+# write.csv(m1_study1_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior_merged.csv")
+# write.csv(m1_study2_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior_merged.csv")
+```
+
+```{r}
+cat("\nBeta Median \n")
+median(m1_study1_eb$beta)
+cat("SD \n")
+sd(m1_study1_eb$beta)
+
+cat("\nRL LR \n")
+median(m1_study1_eb$q_LR)
+cat("SD \n")
+sd(m1_study1_eb$q_LR)
+
+cat("\nphi cog \n")
+median(m1_study1_eb$cog_phi)
+cat("SD \n")
+sd(m1_study1_eb$cog_phi)
+
+cat("\nphi overt \n")
+median(m1_study1_eb$overt_phi)
+cat("SD \n")
+sd(m1_study1_eb$overt_phi)
+
+cat("\nepsilon \n")
+median(m1_study1_eb$epsilon)
+cat("SD \n")
+sd(m1_study1_eb$epsilon)
+
+cat("\nChoice LR \n")
+median(m1_study1_eb$choice_LR)
+cat("SD \n")
+sd(m1_study1_eb$choice_LR)
+
+cat("\nES \n")
+median(m1_study1_eb$explor_scalar)
+cat("SD \n")
+sd(m1_study1_eb$explor_scalar)
+```
+
+
+```{r}
+cat("\nBeta Median \n")
+median(m1_study2_eb$beta)
+cat("SD \n")
+sd(m1_study2_eb$beta)
+
+cat("\nRL LR \n")
+median(m1_study2_eb$q_LR)
+cat("SD \n")
+sd(m1_study2_eb$q_LR)
+
+cat("\nphi cog \n")
+median(m1_study2_eb$cog_phi)
+cat("SD \n")
+sd(m1_study2_eb$cog_phi)
+
+cat("\nphi overt \n")
+median(m1_study2_eb$overt_phi)
+cat("SD \n")
+sd(m1_study2_eb$overt_phi)
+
+cat("\nepsilon \n")
+median(m1_study2_eb$epsilon)
+cat("SD \n")
+sd(m1_study2_eb$epsilon)
+
+cat("\nChoice LR \n")
+median(m1_study2_eb$choice_LR)
+cat("SD \n")
+sd(m1_study2_eb$choice_LR)
+
+cat("\nES \n")
+median(m1_study2_eb$explor_scalar)
+cat("SD \n")
+sd(m1_study2_eb$explor_scalar)
+```
+
+```{r}
+ComparePars(m1_study1_eb$cog_phi, m1_study1_eb$overt_phi, 
+            "Phi", "Cog", "Overt")
+ComparePars(m1_study2_eb$cog_phi, m1_study2_eb$overt_phi, 
+            "Phi", "Cog", "Overt")
+```
+
+Relationships at both train and test in studies 1 and 2   
+
+```{r}
+assert(s1_perf[s1_perf$condition=="overt", "ID"]==m1_study1_eb$ID)
+
+o_min_c_phi_s1_m1 <- m1_study1_eb$overt_phi - m1_study1_eb$cog_phi
+
+cor.test(o_min_c_perf_s1, o_min_c_phi_s1_m1)
+
+cor.test(o_min_c_testperf_s1, o_min_c_phi_s1_m1)
+```
+
+
+
+```{r}
+assert(s2_perf[s2_perf$condition=="overt", "ID"]==m1_study2_eb$ID)
+
+o_min_c_phi_s2_m1 <- m1_study2_eb$overt_phi - m1_study2_eb$cog_phi
+
+cor.test(o_min_c_perf_s2, o_min_c_phi_s2_m1)
+
+cor.test(o_min_c_testperf_s2, o_min_c_phi_s2_m1)
+```
+*Descriptives and chi-square tests*    
+
+Higher median decay in cog in both  
+```{r}
+# hist(sqrt(m1_study1_eb$cog_phi), breaks=100)
+# hist(m1_study1_eb$cog_phi, breaks=100)
+# hist(m1_study1_eb$overt_phi, breaks=100)
+cat("\n Study 1 cog\n")
+median(m1_study1_eb$cog_phi)
+
+cat("\n Study 1 overt\n")
+median(m1_study1_eb$overt_phi)
+```
+
+
+```{r}
+m1_s1_phi <- rbind(
+  data.frame("phi"=m1_study1_eb$overt_phi, "cond"="overt"),
+  data.frame("phi"=m1_study1_eb$cog_phi, "cond"="cognitive")
+)
+
+m1_s2_phi <- rbind(
+  data.frame("phi"=m1_study2_eb$overt_phi, "cond"="overt"),
+  data.frame("phi"=m1_study2_eb$cog_phi, "cond"="cognitive")
+)
+m1_s1_phi$Experiment <- "Experiment 1"
+m1_s2_phi$Experiment <- "Experiment 2"
+
+m1_phi_ID_comb <- rbind(m1_s1_phi, m1_s2_phi)
+
+phi_medians <- rbind(
+  data.frame(m1_s1_phi %>% group_by(cond) %>% summarize(m=median(phi)), "Experiment"="Experiment 1"),
+  data.frame(m1_s2_phi %>% group_by(cond) %>% summarize(m=median(phi)), "Experiment"="Experiment 2")
+)
+```
+
+Difference higher for means but not as meaningful bc of skew, so plotting median   
+
+```{r}
+m1_s1_phi %>% group_by(cond) %>% summarize(m=mean(phi))
+m1_s2_phi %>% group_by(cond) %>% summarize(m=mean(phi))
+```
+
+```{r}
+phi_plot <-ggplot(phi_medians, aes(x=cond, y=m, color=cond, group=cond)) +
+  
+  geom_jitter(data = m1_phi_ID_comb, 
+              aes(x=cond, y=phi, group=cond), 
+              color="black", fill="gray57", size=2, pch=21, width=.15) + 
+  geom_bar(stat="identity", fill="white", size=3, alpha=.2) +
+  facet_wrap(~ Experiment)  + ga + ap + ft + lp + ylab(TeX('$\\phi') ) + xlab("") + 
+  scale_color_manual(values=c("purple", "orange")) + ylim(-.03, 1.1) + tol
+phi_plot
+```
+
+
+```{r}
+#ggsave("../paper/figs/fig_parts/phi_plot.png", phi_plot, height=5, width=10, dpi=700)
+```
+
+
+Percent higher phi in studies 1 and 2  
+
+```{r}
+c_min_o_phi_s1_m1 <- m1_study1_eb$cog_phi - m1_study1_eb$overt_phi
+c_min_o_phi_s2_m1 <- m1_study2_eb$cog_phi - m1_study2_eb$overt_phi
+```
+
+```{r}
+table((c_min_o_phi_s1_m1 > 0)*1)[2]/sum(table((c_min_o_phi_s1_m1 > 0)*1))
+table((c_min_o_phi_s2_m1 > 0)*1)[2]/sum(table((c_min_o_phi_s2_m1 > 0)*1))
+```
+
+```{r}
+chisq.test(table((c_min_o_phi_s1_m1 > 0)*1))
+chisq.test(table((c_min_o_phi_s2_m1 > 0)*1))
+```
+
+
+```{r}
+m1_s1_plot_df <- data.frame("train_oc_diff"=o_min_c_perf_s1, "test_oc_diff"=o_min_c_testperf_s1, "phi_co_diff"=c_min_o_phi_s1_m1)
+m1_s2_plot_df <- data.frame("train_oc_diff"=o_min_c_perf_s2, "test_oc_diff"=o_min_c_testperf_s2, "phi_co_diff"=c_min_o_phi_s2_m1)
+```
+
+
+Training plots  
+```{r}
+a <- ggplot(m1_s1_plot_df, aes(x=phi_co_diff, y=train_oc_diff)) + 
+  geom_smooth(method="lm", se=FALSE, size=3, color="black") +
+  geom_point(pch=21, fill="gray57", size=6) + 
+  stat_cor(method="pearson", size=6, label.y=.5) + 
+  ylab("Proportion correct: \nOvert minus cognitive") + 
+  xlab(TeX("")) +
+  ga + ap + 
+  xlim(-.9, 1.05) + ylim(-.7, .65)
+a
+b <- ggplot(m1_s2_plot_df, aes(x=phi_co_diff, y=train_oc_diff)) + 
+  geom_smooth(method="lm", se=FALSE, size=3, color="black") +
+  geom_point(pch=21, fill="gray57", size=6) + 
+  stat_cor(method="pearson", size=6, label.y=.5) + 
+  ylab("") + 
+  xlab(TeX("")) +
+  ga + ap + 
+  xlim(-.9, 1.05) + ylim(-.7, .65)
+b
+```
+
+Test plots  
+```{r}
+c <- ggplot(m1_s1_plot_df, aes(x=phi_co_diff, y=test_oc_diff)) + 
+  geom_smooth(method="lm", se=FALSE, size=3, color="gray57") +
+  geom_point(pch=21, fill="gray79", size=6) + 
+  stat_cor(method="pearson", size=6, label.y=.5) + 
+  ylab("Proportion correct: \nOvert minus cognitive") + 
+  xlab(TeX("$\\phi^{Cog}-\\phi^{Overt}")) +
+  ga + ap + 
+  xlim(-.9, 1.05) + ylim(-.7, .65)
+
+d <- ggplot(m1_s2_plot_df, aes(x=phi_co_diff, y=test_oc_diff)) + 
+  geom_smooth(method="lm", se=FALSE, size=3, color="gray57") +
+  geom_point(pch=21, fill="gray79", size=6) + 
+  stat_cor(method="pearson", size=6, label.y=.5) + 
+  ylab("") + 
+  xlab(TeX("$\\phi^{Cog}-\\phi^{Overt}")) +
+  ga + ap + 
+  xlim(-.9, 1.05) + ylim(-.7, .65)
+```
+
+```{r}
+all_vs <- (a + b) / (c + d)
+```
+
+
+```{r, fig.height=8, fig.width=12}
+all_vs
+```
+
+
+```{r}
+#ggsave("../paper/figs/fig_parts/phi_vs_propdiff.png", all_vs, height=8, width=14, dpi=700)
+```
+
+Correlation with decay effect  
+```{r}
+cor.test(m1_study1_eb_v1$cog_phi+m1_study1_eb_v1$overt_phi, ranef(m1_full_delay_cond)$ID$delay_cc1)
+cor.test(m1_study2_eb_v1$cog_phi+m1_study2_eb_v1$overt_phi, ranef(m2_full_delay_cond)$ID$delay_cc1)
+```
+
+
+
+```{r}
+ComparePars((m1_study1_eb_v1$cog_phi+m1_study1_eb_v1$overt_phi), ranef(m1_full_delay_cond)$ID$delay_cc1, use_identity_line = 0)
+
+ComparePars((m1_study2_eb_v1$cog_phi+m1_study2_eb_v1$overt_phi), ranef(m2_full_delay_cond)$ID$delay_cc1, use_identity_line = 0)
+```
+
+*Model validation, main text parts*   
+
+6/5/23 — reran sims to make sure completely updated/bug fixed version of par results used  
+
+
+```{r}
+s1_train_sim_m1_eb <- 
+  rm(sp, 
+     "SIM_EMPIRICAL_BAYES_study_1_train_SIT__train_RunMQLearnerDiffDecayToPessPrior57088.csv")
+
+s2_train_sim_m1_eb <- 
+  rm(sp, 
+    "SIM_EMPIRICAL_BAYES_study_2_train_SIT__train_RunMQLearnerDiffDecayToPessPrior28414.csv")
+
+s1_test_sim_m1_eb <- 
+  rm(sp, 
+     "SIM_EMPIRICAL_BAYES_study_1_train_SIT__sit_RunMQLearnerDiffDecayToPessPrior57088.csv")
+
+s2_test_sim_m1_eb <- 
+  rm(sp, 
+    "SIM_EMPIRICAL_BAYES_study_2_train_SIT__sit_RunMQLearnerDiffDecayToPessPrior28414.csv")
+
+```
+
+
+```{r, fig.width=12, fig.height=8, message=FALSE}
+a <- AltOneSimEmpPlotRep(AltPlotSimTrainingCurves(emp_df=s1_train, s1_train_sim_m1_eb))
+b <- AltOneSimEmpPlotRep(AltPlotSimTrainingCurves(emp_df=s2_train, s2_train_sim_m1_eb))
+```
+```{r, fig.width=6, fig.height=5, message=FALSE}
+c <- PlotSimEmpTest(emp_df=s1_sit, sim_df=s1_test_sim_m1_eb)
+d <- PlotSimEmpTest(emp_df=s2_sit, sim_df=s2_test_sim_m1_eb)
+```
+
+```{r, fig.width=12, fig.height=8, message=FALSE}
+a
+```
+
+```{r, fig.width=12, fig.height=8, message=FALSE}
+b
+```
+
+
+
+
+```{r, fig.height=6, fig.width=14}
+sim_test_comb <- c + d 
+```
+
+
+```{r, fig.height=6, fig.width=14}
+#(temporarily flipped tol -> lp to get the legend for paper)  
+sim_test_comb
+```
+
+```{r}
+#ggsave("../paper/figs/fig_parts/train_sim_experiment1_plot.png", a, height=7, width=12, dpi=700)
+```
+
+```{r}
+ggsave("../paper/figs/fig_parts/test_sim_experiment1_plot.png", c, height=5, width=11, dpi=700)
+```
+
+```{r}
+ggsave("../paper/figs/fig_parts/test_sim_experiment2_plot.png", d, height=5, width=11, dpi=700)
+```
+
+For supplemental because of space constraints  
+```{r}
+#ggsave("../paper/figs/fig_parts/train_sim_experiment2_plot.png", b, height=7, width=12, dpi=700)
+```
+
+
+
+## Model 3 — Same as m1 but not letting decay vary  
+
+Prior to vactoin — bug fixed files swapped in (see to_do notes)  
+```{r}
+m3_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPrior35433.csv")
+m3_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPrior22212.csv")
+
+m3_study1_eb <- rbind(m3_study1_eb_v1, m3_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m3_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPrior29818.csv")
+m3_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPrior56742.csv")
+
+m3_study2_eb <- rbind(m3_study2_eb_v1,m3_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+# write.csv(m3_study1_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPrior_merged.csv")
+# write.csv(m3_study2_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPrior_merged.csv")
+```
+
+
+Worse in AIC  
+```{r}
+ComparePars(m3_study1_eb$AIC, m1_study1_eb$AIC, "AIC", "m3", "m1")
+ComparePars(m3_study2_eb$AIC, m1_study2_eb$AIC, "AIC", "m3", "m1")
+
+sum(m3_study1_eb$AIC-m1_study1_eb$AIC)
+sum(m3_study2_eb$AIC-m1_study2_eb$AIC)
+```
+Sanity check that the amount of model improvement when letting decay varies correlates with the diff  in phi between conditions  
+
+```{r}
+assert(m1_study1_eb$ID==m3_study1_eb$ID)
+assert(m1_study2_eb$ID==m3_study2_eb$ID)
+```
+
+
+```{r}
+cor.test(m3_study1_eb$AIC-m1_study1_eb$AIC, abs(m1_study1_eb$overt_phi - m1_study1_eb$cog_phi), method="spearman")
+cor.test(m3_study2_eb$AIC-m1_study2_eb$AIC, abs(m1_study2_eb$overt_phi - m1_study2_eb$cog_phi), method="spearman")
+```
+
+(Function prints Pearson's r but more appropriate Spearman's $\rho$ reported one cell above)    
+```{r}
+ComparePars(m1_study1_eb$AIC-m3_study1_eb$AIC, abs(m1_study1_eb$overt_phi - m1_study1_eb$cog_phi), "", "AIC change", "Overt min Cog phi", use_identity_line = 0)
+ComparePars(m1_study2_eb$AIC-m3_study2_eb$AIC, abs(m1_study2_eb$overt_phi - m1_study2_eb$cog_phi), "", "AIC change", "Overt min Cog phi", use_identity_line = 0)
+```
+
+## Model 4 — Same as m3 but to 0 inits  
+
+```{r}
+m4_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayTo0Inits47402.csv")
+m4_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayTo0Inits84391.csv")
+
+m4_study1_eb <- rbind(m4_study1_eb_v1, m4_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m4_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayTo0Inits41957.csv")
+m4_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayTo0Inits37660.csv")
+
+m4_study2_eb <- rbind(m4_study2_eb_v1, 
+                      m4_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+# write.csv(m4_study1_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayTo0Inits_merged.csv")
+# write.csv(m4_study2_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayTo0Inits_merged.csv")
+```
+
+
+Worse in AIC than pessimistic priors  
+```{r}
+ComparePars(m4_study1_eb$AIC, m3_study1_eb$AIC, "AIC", "m3", "m1")
+ComparePars(m4_study2_eb$AIC, m3_study2_eb$AIC, "AIC", "m3", "m1")
+
+sum(m4_study1_eb$AIC-m3_study1_eb$AIC)
+sum(m4_study2_eb$AIC-m3_study2_eb$AIC)
+```
+
+## Model 5 — Same as m1 but lets beta vary instead of decay  
+
+
+4/6 — bug fixed  
+```{r}
+m5_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffBeta67330.csv")
+m5_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffBeta37484.csv")
+
+m5_study1_eb <- rbind(m5_study1_eb_v1, m5_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m5_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffBeta76602.csv")
+m5_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffBeta11129.csv")
+
+m5_study2_eb <- rbind(m5_study2_eb_v1, m5_study2_eb_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+
+Worse in AIC than diff decay  
+```{r}
+ComparePars(m5_study1_eb$AIC, m1_study1_eb$AIC, "AIC", "m5", "m1")
+ComparePars(m5_study2_eb$AIC, m1_study2_eb$AIC, "AIC", "m5", "m1")
+
+sum(m5_study1_eb$AIC-m1_study1_eb$AIC)
+sum(m5_study2_eb$AIC-m1_study2_eb$AIC)
+```
+
+## Model 6 — Same as m1 but lets learning rate vary instead of decay  
+
+4/6 — bug fix files swapped in  
+
+
+```{r}
+m6_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffLR12095.csv")
+m6_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffLR13604.csv")
+
+m6_study1_eb <- rbind(m6_study1_eb_v1, m6_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m6_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffLR69123.csv")
+m6_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDecayToPessPriorDiffLR43205.csv")
+
+m6_study2_eb <- rbind(m6_study2_eb_v1, m6_study2_eb_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+
+Worse in AIC than decay allowed to vary by condition  
+```{r}
+ComparePars(m6_study1_eb$AIC, m1_study1_eb$AIC, "AIC", "m6", "m1")
+ComparePars(m6_study2_eb$AIC, m1_study2_eb$AIC, "AIC", "m6", "m1")
+
+sum(m6_study1_eb$AIC-m1_study1_eb$AIC)
+sum(m6_study2_eb$AIC-m1_study2_eb$AIC)
+```
+
+
+
+Higher overt learning rate in both  
+```{r}
+median(m6_study1_eb$cog_q_LR)
+median(m6_study1_eb$overt_q_LR)
+
+median(m6_study2_eb$cog_q_LR)
+median(m6_study1_eb$overt_q_LR)
+```
+
+Learning rate correlated across conditions  
+```{r}
+ComparePars(m6_study1_eb$cog_q_LR, m6_study1_eb$overt_q_LR, 
+            "q_LR", "Cog", "Overt")
+ComparePars(m6_study2_eb$cog_q_LR, m6_study2_eb$overt_q_LR, 
+            "q_LR", "Cog", "Overt")
+```
+
+Correlated with perf diffs but not as strongly as phi  
+```{r}
+assert(s1_perf[s1_perf$condition=="overt", "ID"]==m6_study1_eb$ID)
+
+o_min_c_q_LR_s1_m6 <- m6_study1_eb$overt_q_LR - m6_study1_eb$cog_q_LR
+
+cor.test(o_min_c_perf_s1, o_min_c_q_LR_s1_m6)
+
+cor.test(o_min_c_testperf_s1, o_min_c_q_LR_s1_m6)
+```
+
+
+
+```{r}
+assert(s2_perf[s2_perf$condition=="overt", "ID"]==m6_study2_eb$ID)
+
+o_min_c_q_LR_s2_m6 <- m6_study2_eb$overt_q_LR - m6_study2_eb$cog_q_LR
+
+cor.test(o_min_c_perf_s2, o_min_c_q_LR_s2_m6)
+
+cor.test(o_min_c_testperf_s2, o_min_c_q_LR_s2_m6)
+```
+
+```{r}
+chisq.test(table((o_min_c_q_LR_s1_m6 > 0)*1))
+chisq.test(table((o_min_c_q_LR_s2_m6 > 0)*1))
+```
+
+## Model 11 — Simple q-learner model  
+
+
+```{r}
+m11_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearner24681.csv")
+m11_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearner77403.csv")
+
+m11_study1_eb <- rbind(m11_study1_eb_v1,m11_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+
+m11_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearner18790.csv")
+m11_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearner26119.csv")
+
+m11_study2_eb <- rbind(m11_study2_eb_v1, m11_study2_eb_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+
+Much worse in AIC to not include decay   
+
+```{r}
+ComparePars(m11_study1_eb$AIC, m3_study1_eb$AIC, "AIC", "m11", "m3")
+ComparePars(m11_study2_eb$AIC, m3_study2_eb$AIC, "AIC", "m11", "m3")
+
+sum(m11_study1_eb$AIC-m3_study1_eb$AIC)
+sum(m11_study2_eb$AIC-m3_study2_eb$AIC)
+```
+
+## Model 12 — Simple Bayes model   
+
+
+```{r}
+m12_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMBayesLearner13415.csv")
+m12_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMBayesLearner42048.csv")
+
+m12_study1_eb <- rbind(m12_study1_eb_v1,m12_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m12_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMBayesLearner22977.csv")
+m12_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMBayesLearner23536.csv")
+
+m12_study2_eb <- rbind(m12_study2_eb_v1, m12_study2_eb_v2) %>% group_by(ID) %>% slice(which.min(nll))
+```
+
+
+In turn much worse than the simple Q-learning model  
+
+```{r}
+ComparePars(m12_study1_eb$AIC, m11_study1_eb$AIC, "AIC", "m12", "m11")
+ComparePars(m12_study2_eb$AIC, m11_study2_eb$AIC, "AIC", "m12", "m11")
+
+sum(m12_study1_eb$AIC-m11_study1_eb$AIC)
+sum(m12_study2_eb$AIC-m11_study2_eb$AIC)
+```
+
+
+## Model 13 — M12 but allowing beta to vary   
+
+
+
+```{r}
+m13_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMBayesLearnerDiffBeta60557.csv")
+m13_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMBayesLearnerDiffBeta85855.csv")
+
+m13_study1_eb <- rbind(m13_study1_eb_v1, m13_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m13_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMBayesLearnerDiffBeta29859.csv")
+m13_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMBayesLearnerDiffBeta29859.csv")
+
+m13_study2_eb <- rbind(m13_study2_eb_v1, m13_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+```
+
+Way worse than m1    
+```{r}
+ComparePars(m13_study1_eb$AIC, m1_study1_eb$AIC, "AIC", "m13", "m1")
+ComparePars(m13_study2_eb$AIC, m1_study2_eb$AIC, "AIC", "m13", "m1")
+
+sum(m13_study1_eb$AIC-m1_study1_eb$AIC)
+sum(m13_study2_eb$AIC-m1_study2_eb$AIC)
+```
+
+Higher median beta in overt    
+
+```{r}
+median(m13_study1_eb$cog_beta)
+median(m13_study1_eb$overt_beta)
+
+median(m13_study2_eb$cog_beta)
+median(m13_study2_eb$overt_beta)
+```
+
+
+Modest correlations between beta and perf  
+```{r}
+assert(s1_perf[s1_perf$condition=="overt", "ID"]==m13_study1_eb$ID)
+
+o_min_c_beta_s1_m13 <- m13_study1_eb$overt_beta - m13_study1_eb$cog_beta
+
+cor.test(o_min_c_perf_s1, o_min_c_beta_s1_m13)
+
+cor.test(o_min_c_testperf_s1, o_min_c_beta_s1_m13)
+```
+
+
+
+```{r}
+assert(s2_perf[s2_perf$condition=="overt", "ID"]==m13_study2_eb$ID)
+
+o_min_c_beta_s2_m13 <- m13_study2_eb$overt_beta - m13_study2_eb$cog_beta
+
+cor.test(o_min_c_perf_s2, o_min_c_beta_s2_m13)
+
+cor.test(o_min_c_testperf_s2, o_min_c_beta_s2_m13)
+```
+
+
+## Model 14 — Hybrid model — integrative plus bayes — bayes contribution varies by cond  
+
+*Alt refers to this being the simpler version with uncertainty factored in at the action (arm) level rather than a weighted uncertainty computed — this and the more complex version were v similar in terms of fit*     
+
+
+```{r}
+m14_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayesAlt39650.csv")
+m14_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayesAlt71571.csv")
+
+m14_study1_eb <- rbind(m14_study1_eb_v1, m14_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m14_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayesAlt38226.csv")
+m14_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayesAlt28286.csv")
+
+m14_study2_eb <- rbind(m14_study2_eb_v1, m14_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+```
+
+*Original version with the more complicated weighting scheme*    
+
+```{r}
+m14_study1_eb_v1_old <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayes25885.csv")
+m14_study1_eb_v2_old <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayes65430.csv")
+
+m14_study1_eb_old <- rbind(m14_study1_eb_v1_old, m14_study1_eb_v2_old) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m14_study2_eb_v1_old <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayes30853.csv")
+m14_study2_eb_v2_old <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDecayingQLearnerDiffBayes58630.csv")
+
+m14_study2_eb_old <- rbind(m14_study2_eb_v1_old, m14_study2_eb_v2_old) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+```
+
+As expected, these are very similar, with the new version a tad better  
+
+```{r}
+ComparePars(m14_study1_eb$AIC, m14_study1_eb_old$AIC, "AIC", "m14", "m14 old")
+sum(m14_study1_eb$AIC-m14_study1_eb_old$AIC)
+ComparePars(m14_study2_eb$AIC, m14_study2_eb_old$AIC, "AIC", "m14", "m14 old")
+sum(m14_study2_eb$AIC-m14_study2_eb_old$AIC)
+```
+
+Worse AIC (and nll) compared to m1 (not a nested model bc doesn't have diff decay)  
+```{r}
+ComparePars(m14_study1_eb$AIC, m1_study1_eb$AIC, "AIC", "m14", "m1")
+ComparePars(m14_study2_eb$AIC, m1_study2_eb$AIC, "AIC", "m14", "m1")
+
+sum(m14_study1_eb$AIC-m1_study1_eb$AIC)
+sum(m14_study2_eb$AIC-m1_study2_eb$AIC)
+sum(m14_study1_eb$nll-m1_study1_eb$nll)
+sum(m14_study2_eb$nll-m1_study2_eb$nll)
+```
+
+Higher median rho in overt    
+
+```{r}
+median(m14_study1_eb$rho_cog)
+median(m14_study1_eb$rho_overt)
+
+median(m14_study2_eb$rho_cog)
+median(m14_study2_eb$rho_overt)
+```
+
+
+Correlations w perf  but not as strongly as phi  
+
+```{r}
+assert(s1_perf[s1_perf$condition=="overt", "ID"]==m14_study1_eb$ID)
+
+o_min_c_beta_s1_m14 <- m14_study1_eb$rho_overt - m14_study1_eb$rho_cog
+
+cor.test(o_min_c_perf_s1, o_min_c_beta_s1_m14)
+
+cor.test(o_min_c_testperf_s1, o_min_c_beta_s1_m14)
+```
+
+
+
+```{r}
+assert(s2_perf[s2_perf$condition=="overt", "ID"]==m14_study2_eb$ID)
+
+o_min_c_beta_s2_m14 <- m14_study2_eb$rho_overt - m14_study2_eb$rho_cog
+
+cor.test(o_min_c_perf_s2, o_min_c_beta_s2_m14)
+
+cor.test(o_min_c_testperf_s2, o_min_c_beta_s2_m14)
+```
+
+
+## Model 15 — Hybrid model — integrative plus bayes — decay contribution varies by cond  
+
+*Alternate version with the simpler action-wise weighting (see m14 description)*    
+
+
+```{r}
+m15_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayesAlt33317.csv")
+m15_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayesAlt35801.csv")
+
+m15_study1_eb <- rbind(m15_study1_eb_v1, m15_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+
+m15_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayesAlt64665.csv")
+m15_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayesAlt54458.csv")
+
+m15_study2_eb <- rbind(m15_study2_eb_v1, m15_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+```
+
+
+*Original version with the more complicated weighting scheme*  
+
+bug numbers: 75340 81994 63931 40889  
+
+```{r}
+m15_study1_eb_v1_old <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayes50404.csv")
+m15_study1_eb_v2_old <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayes56900.csv")
+
+m15_study1_eb_old <- rbind(m15_study1_eb_v1_old, m15_study1_eb_v2_old) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+
+m15_study2_eb_v1_old <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayes68726.csv")
+m15_study2_eb_v2_old <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMHybridDiffDecayQLearnerBayes30103.csv")
+
+m15_study2_eb_old <- rbind(m15_study2_eb_v1_old, m15_study2_eb_v2_old) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+```
+
+
+As expected, again very similar — so using new/simpler one going forward  
+
+```{r}
+ComparePars(m15_study1_eb$AIC, m15_study1_eb_old$AIC, "AIC", "m15", "m15 old")
+sum(m15_study1_eb$AIC-m15_study1_eb_old$AIC)
+ComparePars(m15_study2_eb$AIC, m15_study2_eb_old$AIC, "AIC", "m15", "m15 old")
+sum(m15_study2_eb$AIC-m15_study2_eb_old$AIC)
+```
+
+Worse AIC compared to m1  
+```{r}
+ComparePars(m15_study1_eb$AIC, m1_study1_eb$AIC, "AIC", "m15", "m1")
+ComparePars(m15_study2_eb$AIC, m1_study2_eb$AIC, "AIC", "m15", "m1")
+
+sum(m15_study1_eb$AIC-m1_study1_eb$AIC)
+sum(m15_study2_eb$AIC-m1_study2_eb$AIC)
+
+# sum(m15_study1_eb$nll-m1_study1_eb$nll)
+# sum(m15_study2_eb$nll-m1_study2_eb$nll)
+```
+
+Higher median decay in cog in both  
+```{r}
+median(m15_study1_eb$cog_phi)
+median(m15_study1_eb$overt_phi)
+
+median(m15_study2_eb$cog_phi)
+median(m15_study1_eb$overt_phi)
+```
+
+
+```{r}
+ComparePars(m15_study1_eb$cog_phi, m15_study1_eb$overt_phi, 
+            "Phi", "Cog", "Overt")
+ComparePars(m15_study2_eb$cog_phi, m15_study2_eb$overt_phi, 
+            "Phi", "Cog", "Overt")
+```
+
+Similar perf correlations as m1  
+
+```{r}
+assert(s1_perf[s1_perf$condition=="overt", "ID"]==m15_study1_eb$ID)
+
+o_min_c_phi_s1_m15 <- m15_study1_eb$overt_phi - m15_study1_eb$cog_phi
+
+cor.test(o_min_c_perf_s1, o_min_c_phi_s1_m15)
+
+cor.test(o_min_c_testperf_s1, o_min_c_phi_s1_m15)
+```
+
+
+```{r}
+assert(s2_perf[s2_perf$condition=="overt", "ID"]==m15_study2_eb$ID)
+
+o_min_c_phi_s2_m15 <- m15_study2_eb$overt_phi - m15_study2_eb$cog_phi
+
+cor.test(o_min_c_perf_s2, o_min_c_phi_s2_m15)
+
+cor.test(o_min_c_testperf_s2, o_min_c_phi_s2_m15)
+```
+
+
+
+
+## Model 27 — Fixing both ES and epsilon at the group level  
+
+
+```{r}
+m27_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorESAndEpsFixed46645.csv")
+m27_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorESAndEpsFixed33416.csv")
+
+m27_study1_eb <- rbind(m27_study1_eb_v1, m27_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m27_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorESAndEpsFixed20328.csv")
+m27_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorESAndEpsFixed44601.csv")
+
+m27_study2_eb <- rbind(m27_study2_eb_v1, m27_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+# write.csv(m27_study1_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorESAndEpsFixed_merged.csv")
+# write.csv(m27_study2_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorESAndEpsFixed_merged.csv")
+```
+
+Does worsen NLL substantially  
+```{r}
+ComparePars(m27_study1_eb$nll, m1_study1_eb$nll, "nll", "m27", "m1")
+ComparePars(m27_study2_eb$nll, m1_study2_eb$nll, "nll", "m27", "m1")
+
+sum(m27_study1_eb$nll-m1_study1_eb$nll)
+sum(m27_study2_eb$nll-m1_study2_eb$nll)
+```
+
+Still higher median decay in cog in both  
+```{r}
+
+median(m27_study1_eb$cog_phi)
+median(m27_study1_eb$overt_phi)
+
+median(m27_study2_eb$cog_phi)
+median(m27_study1_eb$overt_phi)
+```
+
+
+
+Strong relationships at both train and test in studies 1 and 2  
+
+```{r}
+assert(s1_perf[s1_perf$condition=="overt", "ID"]==m27_study1_eb$ID)
+
+o_min_c_phi_s1_m27 <- m27_study1_eb$overt_phi - m27_study1_eb$cog_phi
+
+cor.test(o_min_c_perf_s1, o_min_c_phi_s1_m27)
+
+cor.test(o_min_c_testperf_s1, o_min_c_phi_s1_m27)
+```
+
+
+
+```{r}
+assert(s2_perf[s2_perf$condition=="overt", "ID"]==m27_study2_eb$ID)
+
+o_min_c_phi_s2_m27 <- m27_study2_eb$overt_phi - m27_study2_eb$cog_phi
+
+cor.test(o_min_c_perf_s2, o_min_c_phi_s2_m27)
+
+cor.test(o_min_c_testperf_s2, o_min_c_phi_s2_m27)
+```
+59 and 62% of pts show a higher phi in overt  
+
+```{r}
+table((o_min_c_phi_s1_m27 > 0)*1)
+table((o_min_c_phi_s2_m27 > 0)*1)
+
+table((o_min_c_phi_s1_m27 > 0))[1]/sum(table((o_min_c_phi_s1_m27 > 0)))
+table((o_min_c_phi_s2_m27 > 0))[1]/sum(table((o_min_c_phi_s2_m27 > 0)))
+      
+chisq.test(table(if_else((o_min_c_phi_s1_m27 > 0) == TRUE, 1, 0)))
+chisq.test(table(if_else((o_min_c_phi_s2_m27 > 0) == TRUE, 1, 0)))
+```
+
+## Model 29 — Model 1 but with no choice kernel
+
+
+```{r}
+m29_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorNoCK21030.csv")
+m29_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorNoCK89190.csv")
+# Replace when back  
+#m29_study1_eb <- m29_study1_eb_v1
+m29_study1_eb <- rbind(m29_study1_eb_v1, m29_study1_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+m29_study2_eb_v1 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorNoCK64103.csv")
+m29_study2_eb_v2 <- rm(bp, "BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorNoCK74167.csv")
+
+# Delete when final one is back  
+m29_study2_eb <- m29_study2_eb_v1
+  
+m29_study2_eb <- rbind(m29_study2_eb_v1, m29_study2_eb_v2) %>% 
+  group_by(ID) %>% slice(which.min(nll))
+
+# write.csv(m29_study1_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorNoCK_merged.csv")
+# write.csv(m29_study2_eb,
+#           "../model_res/opts_mle_paper_final/best/BEST_study_2_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPriorNoCK_merged.csv")
+```
+
+Dramatically worse fit  
+
+```{r}
+ComparePars(m29_study1_eb$AIC, m1_study1_eb$AIC, "AIC", "m29", "m1")
+ComparePars(m29_study2_eb$AIC, m1_study2_eb$AIC, "AIC", "m29", "m1")
+
+sum(m29_study1_eb$AIC-m1_study1_eb$AIC)
+sum(m29_study2_eb$AIC-m1_study2_eb$AIC)
+```
+
+
+## Model Comparison  
+
+
+```{r}
+AIC_diff_df <-
+ rbind(
+    data.frame("diff"=m12_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Bayes"),  
+    data.frame("diff"=m12_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Bayes"),
+    
+    data.frame("diff"=m4_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Q_decayto0"),  
+    data.frame("diff"=m4_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Q_decayto0"),  
+  
+    data.frame("diff"=m3_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Q_decay"),  
+    data.frame("diff"=m3_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Q_decay"), 
+    
+    data.frame("diff"=m5_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Q_decay_diff_beta"),  
+    data.frame("diff"=m5_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Q_decay_diff_beta"),
+    
+    data.frame("diff"=m13_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Bayes_diff_beta"),  
+    data.frame("diff"=m13_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Bayes_diff_beta"),
+    
+    data.frame("diff"=m6_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Q_decay_diff_lr"),  
+    data.frame("diff"=m6_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Q_decay_diff_lr"),
+    
+    data.frame("diff"=m14_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Q_decay_diff_bayes"),  
+    data.frame("diff"=m14_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Q_decay_diff_bayes"),
+    
+    data.frame("diff"=m15_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Q_diff_decay_bayes"),  
+    data.frame("diff"=m15_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Q_diff_decay_bayes"),
+
+    data.frame("diff"=m1_study1_eb$AIC-m11_study1_eb$AIC, "study"=1, "model"="Q_decay_diff_phi"),  
+    data.frame("diff"=m1_study2_eb$AIC-m11_study2_eb$AIC, "study"=2, "model"="Q_decay_diff_phi")
+ )
+
+AIC_diff_df$study <- as.factor(AIC_diff_df$study)
+AIC_diff_summ <- AIC_diff_df %>% group_by(model, study) %>% summarize(m=mean(diff))
+```
+
+```{r}
+sum(m1_study1_eb$AIC-m3_study1_eb$AIC)
+sum(m1_study2_eb$AIC-m3_study2_eb$AIC)
+```
+
+
+
+Confirm min in both studies is diff phi  
+```{r}
+AIC_diff_summ[AIC_diff_summ$study == 1, ] %>% arrange(m)
+AIC_diff_summ[AIC_diff_summ$study == 2, ] %>% arrange(m)
+```
+
+```{r}
+levels <-
+  c(
+    "Bayes_diff_beta",
+    "Bayes", 
+    "Q_decayto0", 
+    "Q_decay", 
+    "Q_decay_diff_beta",  
+    "Q_decay_diff_lr", 
+    "Q_decay_diff_bayes", 
+    "Q_diff_decay_bayes", 
+    "Q_decay_diff_phi"
+  )
+
+assert(length(levels)==9)
+
+AIC_diff_summ$model <- factor(AIC_diff_summ$model, levels = levels)
+AIC_diff_df$model <- factor(AIC_diff_df$model, levels = levels)
+```
+
+
+
+```{r, fig.height=4, fig.width=8}
+mp1 <- ggplot(AIC_diff_summ %>% filter(study == 1), aes(x=model, y=m, group=model, fill=model)) + 
+  geom_hline(yintercept = 0, size=2) +
+  geom_jitter(data=AIC_diff_df %>% filter(study == 1), aes(x=model, y=diff, group=model), 
+                fill="gray57", pch=21, width=.3, size=4, alpha=.05) + 
+  geom_bar(stat="identity", color="black", alpha=.8, size=2) + 
+  ylab(TeX('$\\Delta\ AIC$ from simple Q-learner')) +
+  tol + ga + ap + tp +
+  ggtitle("Study 1") +
+  #facet_wrap(~ study) +
+  xlab("") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())  +
+    theme(axis.title.y=element_text(size=22)) + ylim(-65, 65) + coord_flip()
+
+```
+
+```{r, fig.height=4, fig.width=8}
+mp2 <- ggplot(AIC_diff_summ %>% filter(study == 2), aes(x=model, y=m, group=model, fill=model)) + 
+  geom_hline(yintercept = 0, size=2) +
+  geom_jitter(data=AIC_diff_df %>% filter(study == 2), aes(x=model, y=diff, group=model), 
+                fill="gray57", pch=21, width=.3, size=4, alpha=.05) + 
+  geom_bar(stat="identity", color="black", alpha=.8, size=2) + 
+  ylab(TeX('$\\Delta\ AIC$ from simple Q-learner')) +
+  tol + ga + ap + tp +
+  ggtitle("Study 2") +
+  xlab("") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())  +
+  theme(axis.title.y=element_text(size=22)) + ylim(-65, 65) + coord_flip()
+```
+
+
+```{r}
+combined_aic <- mp1 + mp2
+```
+
+
+```{r, fig.height=6, fig.width=12}
+combined_aic
+```
+```{r}
+#ggsave("../paper/figs/fig_parts/aic_plot.png", combined_aic, height=5, width=10, dpi=700)
+```
+
+
+```{r}
+AIC_diff_df %>% group_by(model, study) %>% summarize(m=mean(diff)) %>% arrange(m)
+```
+
+
+Get AICs for supplemental table  
+
+```{r}
+cat(round(sum(m1_study1_eb$AIC), 0), "\n")
+cat(round(sum(m1_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m3_study1_eb$AIC), 0), "\n")
+cat(round(sum(m3_study2_eb$AIC), 0))
+```
+```{r}
+cat(round(sum(m4_study1_eb$AIC), 0), "\n")
+cat(round(sum(m4_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m5_study1_eb$AIC), 0), "\n")
+cat(round(sum(m5_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m6_study1_eb$AIC), 0), "\n")
+cat(round(sum(m6_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m13_study1_eb$AIC), 0), "\n")
+cat(round(sum(m13_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m14_study1_eb$AIC), 0), "\n")
+cat(round(sum(m14_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m15_study1_eb$AIC), 0), "\n")
+cat(round(sum(m15_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m11_study1_eb$AIC), 0), "\n")
+cat(round(sum(m11_study2_eb$AIC), 0))
+```
+
+```{r}
+cat(round(sum(m12_study1_eb$AIC), 0), "\n")
+cat(round(sum(m12_study2_eb$AIC), 0))
+```
+
+
+

@@ -64,7 +64,7 @@ Define paths and functions
 allp <- "../model_res/opts_mle_paper_final/all/"
 # Empirical Bayes results 
 bp <- "../model_res/opts_mle_paper_final/best/"
-# Simulations  
+# Simulations (old folder name — includes emp bayes res)
 sp <- "../model_res/sims_clean/sims_from_mle/"
 # Read model function 
 rm <- function(path, model_str) read.csv(paste0(path, model_str))
@@ -137,6 +137,7 @@ comb_te_summs <- rbind(s1_te_summs, s2_te_summs)
 comb_te_summs$experiment <- factor(comb_te_summs$experiment)
 ```
 
+
 ```{r}
 a <- ggplot(comb_summs, 
       aes(x=experiment, y=m, group=condition, fill=condition)) + 
@@ -179,6 +180,111 @@ perf_comb
 
 ```{r}
 #ggsave("../paper/figs/fig_parts/perf_plot.png", perf_comb, height=6, width=10, dpi=700)
+```
+
+
+For resub, showing learning curves in Fig 2  
+
+```{r}
+s1_train_summs_lc <- s1_train %>% group_by(condition, ID, trial_within_condition, probability) %>%  summarize(m=mean(correct))
+
+s1_tr_summs_lc <- Rmisc::summarySEwithin(s1_train_summs_lc,
+                        measurevar = "m",
+                        withinvars = c("condition", "trial_within_condition", "probability"), 
+                        idvar = "ID")
+
+s2_train_summs_lc <- s2_train %>% group_by(condition, ID, trial_within_condition, probability) %>%  summarize(m=mean(correct))
+
+s2_tr_summs_lc <- Rmisc::summarySEwithin(s2_train_summs_lc,
+                        measurevar = "m",
+                        withinvars = c("condition", "trial_within_condition", "probability"), 
+                        idvar = "ID")
+```
+
+
+
+```{r}
+s191_p <- ggplot(s1_tr_summs_lc %>% filter(probability=="90-10"), 
+       aes(x=as.numeric(trial_within_condition), y=m, group=condition, color=condition)) + 
+      geom_hline(yintercept = c(seq(.5, 1, .1))) +
+      geom_hline(yintercept = .5, size=3) +
+      geom_vline(xintercept = 20, size=1, color="gray57", linetype="dotted") + 
+      geom_ribbon(aes(x=as.numeric(trial_within_condition), ymin=m-se, ymax=m+se), alpha=.3, color="gray57") + 
+      geom_line(size=1, alpha=1) + 
+      scale_color_manual(values=c("purple", "orange")) + ga + ap + 
+  xlab("") + ylab("Proportion correct") + tol +
+    ggtitle("90-10") + tp + theme(axis.text.x = element_blank(), axis.ticks.x=element_blank()) + 
+  scale_y_continuous(breaks=c(.6, .8, 1)) + ylim(.48, 1.02)
+
+```
+
+
+
+```{r}
+s141_p <-ggplot(s1_tr_summs_lc %>% filter(probability=="40-10"), 
+       aes(x=as.numeric(trial_within_condition), y=m, group=condition, color=condition)) + 
+      geom_hline(yintercept = c(seq(.5, 1, .1))) +
+      geom_hline(yintercept = .5, size=3) +
+      geom_vline(xintercept = 20, size=1, color="gray57", linetype="dotted") + 
+      geom_ribbon(aes(x=as.numeric(trial_within_condition), ymin=m-se, ymax=m+se), alpha=.3, color="gray57") + 
+      geom_line(size=1, alpha=1) + 
+      scale_color_manual(values=c("purple", "orange")) + ga + ap + 
+  xlab("Stim iteration") + ylab("") + tol +
+    ggtitle("40-10") + tp + 
+  scale_y_continuous(breaks=c(.6, .8, 1)) + ylim(.48, 1.02)
+```
+
+
+```{r}
+s291_p <-ggplot(s2_tr_summs_lc %>% filter(probability=="90-10"), 
+       aes(x=as.numeric(trial_within_condition), y=m, group=condition, color=condition)) + 
+      geom_hline(yintercept = c(seq(.5, 1, .1))) +
+      geom_hline(yintercept = .5, size=3) +
+      geom_vline(xintercept = 20, size=1, color="gray57", linetype="dotted") + 
+      geom_ribbon(aes(x=as.numeric(trial_within_condition), ymin=m-se, ymax=m+se), alpha=.3, color="gray57") + 
+      geom_line(size=1, alpha=1) + 
+      scale_color_manual(values=c("purple", "orange")) + ga + ap + 
+  xlab("") + ylab("") + tol +
+    ggtitle("90-10") + tp + theme(axis.text = element_blank(), axis.ticks=element_blank()) + 
+   ylim(.48, 1.02)
+```
+
+
+```{r}
+s241_p <-ggplot(s2_tr_summs_lc %>% filter(probability=="40-10"), 
+       aes(x=as.numeric(trial_within_condition), y=m, group=condition, color=condition)) + 
+      geom_hline(yintercept = c(seq(.5, 1, .1))) +
+      geom_hline(yintercept = .5, size=3) +
+      geom_vline(xintercept = 20, size=1, color="gray57", linetype="dotted") + 
+      geom_ribbon(aes(x=as.numeric(trial_within_condition), ymin=m-se, ymax=m+se), alpha=.3, color="gray57") + 
+      geom_line(size=1, alpha=1) + 
+      scale_color_manual(values=c("purple", "orange")) + ga + ap + 
+  xlab("Stim iteration") + ylab("") + tol +
+    ggtitle("40-10") + tp + theme(axis.text.y = element_blank(), axis.ticks.y=element_blank()) + 
+   ylim(.48, 1.02)
+```
+
+```{r}
+s1_lcs <- s191_p / s141_p
+```
+
+```{r, fig.height=6, fig.width=4}
+s1_lcs
+```
+
+
+```{r}
+s2_lcs <- s291_p / s241_p
+```
+
+```{r, fig.height=6, fig.width=4}
+s2_lcs
+```
+
+
+```{r}
+# ggsave("../paper/figs/fig_parts/s1_lcs.png", s1_lcs, height=6, width=5, dpi=700)
+# ggsave("../paper/figs/fig_parts/s2_lcs.png", s2_lcs, height=6, width=5, dpi=700)
 ```
 
 ## Statistical analyses  
@@ -424,9 +530,256 @@ t.test(asin(sqrt(m)) ~ condition, data=s2_summs_test_id, paired=TRUE)
 ```
 
 
+Additional check for resub: Is there moderation by difference in reaction times?  
+
+```{r}
+mean(s1_train[s1_train$condition=="cognitive", "rt_key_1"])-mean(s1_train[s1_train$condition=="overt", "rt_key_1"])
+mean(s1_sit[s1_sit$condition=="cognitive", "rt_key_1"])-mean(s1_sit[s1_sit$condition=="overt", "rt_key_1"])
+
+mean(s2_train[s2_train$condition=="cognitive", "rt_key_1"])-mean(s2_train[s2_train$condition=="overt", "rt_key_1"])
+mean(s2_sit[s2_sit$condition=="cognitive", "rt_key_1"])-mean(s2_sit[s2_sit$condition=="overt", "rt_key_1"])
+```
+```{r}
+s1_tr_rt_inds <- s1_train %>% group_by(condition, ID) %>% summarize(m=mean(rt_key_1))   
+s1_tr_diffs_inds <- 
+  data.frame("diff"=s1_tr_rt_inds[s1_tr_rt_inds$condition=="cognitive", "m"]-s1_tr_rt_inds[s1_tr_rt_inds$condition=="overt", "m"],
+             "ID"=s1_tr_rt_inds[s1_tr_rt_inds$condition=="cognitive", "ID"])
+assert(all(s1_tr_rt_inds[s1_tr_rt_inds$condition=="cognitive", "ID"]==s1_tr_rt_inds[s1_tr_rt_inds$condition=="overt", "ID"]))
+
+s1_te_rt_inds <- s1_sit %>% group_by(condition, ID) %>% summarize(m=mean(rt_key_1))   
+s1_te_diffs_inds <- 
+  data.frame("diff"=s1_te_rt_inds[s1_te_rt_inds$condition=="cognitive", "m"]-s1_te_rt_inds[s1_te_rt_inds$condition=="overt", "m"],
+             "ID"=s1_te_rt_inds[s1_te_rt_inds$condition=="cognitive", "ID"])
+
+s2_tr_rt_inds <- s2_train %>% group_by(condition, ID) %>% summarize(m=mean(rt_key_1))   
+s2_tr_diffs_inds <- 
+  data.frame("diff"=s2_tr_rt_inds[s2_tr_rt_inds$condition=="cognitive", "m"]-s2_tr_rt_inds[s2_tr_rt_inds$condition=="overt", "m"],
+             "ID"=s2_tr_rt_inds[s2_tr_rt_inds$condition=="cognitive", "ID"])
+assert(all(s2_tr_rt_inds[s2_tr_rt_inds$condition=="cognitive", "ID"]==s2_tr_rt_inds[s2_tr_rt_inds$condition=="overt", "ID"]))
+
+s2_te_rt_inds <- s2_sit %>% group_by(condition, ID) %>% summarize(m=mean(rt_key_1))   
+s2_te_diffs_inds <- 
+  data.frame("diff"=s2_te_rt_inds[s2_te_rt_inds$condition=="cognitive", "m"]-s2_te_rt_inds[s2_te_rt_inds$condition=="overt", "m"],
+             "ID"=s2_te_rt_inds[s2_te_rt_inds$condition=="cognitive", "ID"])
+
+```
+
+Add the RT diffs to dataframes  
+
+```{r}
+s1_IDs <- unique(s1_train$ID)
+for (i in 1:length(s1_IDs)) {
+  s1_train[s1_train$ID == s1_IDs[i], "rt_diff"] <- s1_tr_diffs_inds[s1_tr_diffs_inds$ID == s1_IDs[i], "m"]
+  s1_sit[s1_sit$ID == s1_IDs[i], "rt_diff"] <- s1_te_diffs_inds[s1_te_diffs_inds$ID == s1_IDs[i], "m"]
+}
+# Spot checks 
+# s1_train %>% filter(ID==25) %>% select(rt_diff)
+# s1_tr_diffs_inds %>% filter(ID==25) %>% select(m)
+# 
+# s1_sit %>% filter(ID==25) %>% select(rt_diff)
+# s1_te_diffs_inds %>% filter(ID==25) %>% select(m)
+# 
+# s1_train %>% filter(ID==102) %>% select(rt_diff)
+# s1_tr_diffs_inds %>% filter(ID==102) %>% select(m)
+# 
+# s1_sit %>% filter(ID==102) %>% select(rt_diff)
+# s1_te_diffs_inds %>% filter(ID==102) %>% select(m)
+```
+
+
+```{r}
+s2_IDs <- unique(s2_train$ID)
+for (i in 1:length(s1_IDs)) {
+  s2_train[s2_train$ID == s2_IDs[i], "rt_diff"] <- s2_tr_diffs_inds[s2_tr_diffs_inds$ID == s2_IDs[i], "m"]
+  s2_sit[s2_sit$ID == s2_IDs[i], "rt_diff"] <- s2_te_diffs_inds[s2_te_diffs_inds$ID == s2_IDs[i], "m"]
+}
+# Spot checks 
+# s2_train %>% filter(ID==25) %>% select(rt_diff)
+# s2_tr_diffs_inds %>% filter(ID==25) %>% select(m)
+# 
+# s2_sit %>% filter(ID==25) %>% select(rt_diff)
+# s2_te_diffs_inds %>% filter(ID==25) %>% select(m)
+# 
+# s2_train %>% filter(ID==102) %>% select(rt_diff)
+# s2_tr_diffs_inds %>% filter(ID==102) %>% select(m)
+# # 
+# s2_sit %>% filter(ID==102) %>% select(rt_diff)
+# s2_te_diffs_inds %>% filter(ID==102) %>% select(m)
+```
+
+
+Examine as potential moderator  
+
+Reduced complexity where needed because more complex models were singular   
+```{r}
+summary(m1_train_full_regr <- glmer(correct ~  
+                                      cond_cc*scale(rt_diff) + scale(trial_within_condition) + 
+                                      (cond_cc + scale(trial_within_condition)  |ID), 
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+  
+```{r}
+summary(m1_test_full_regr <- glmer(correct ~  cond_cc*scale(rt_diff) + (cond_cc |ID), 
+          data=s1_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+Reduced complexity for these two because more complex models singular  
+
+```{r}
+summary(m2_train_full_regr <- glmer(correct ~  
+                                      cond_cc*scale(rt_diff) + scale(trial_within_condition) + 
+                                      (cond_cc + scale(trial_within_condition)  |ID), 
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+```{r}
+summary(m2_test_full_regr <- glmer(correct ~  cond_cc*scale(rt_diff) + (cond_cc |ID), 
+          data=s2_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+Additional check for resub 2: Is performance better when the first learning block of the condition happens second, reflective of meta-learning  
+
+```{r}
+s1_with_cond_order <- read.csv("../data/cleaned_files/s1_train_deident_with_first_cond.csv")
+s2_with_cond_order <- read.csv("../data/cleaned_files/s2_train_with_exclusions_IDed_with_first_cond_wdeID.csv")
+```
+
+Put the first assignments into regular dfs  
+
+```{r}
+unique_IDs <- unique(s1_train$ID)
+
+for (s in 1:length(unique_IDs)) {
+  s1_train[s1_train$ID == unique_IDs[s], "first_cond"] <- 
+    s1_with_cond_order[s1_with_cond_order$deident_ID == unique_IDs[s], "first_cond"]
+  s1_sit[s1_sit$ID == unique_IDs[s], "first_cond"] <- 
+    unique(s1_with_cond_order[s1_with_cond_order$deident_ID == unique_IDs[s], "first_cond"])
+}
+```
+
+
+```{r}
+s1_train %>% group_by(condition, first_cond) %>% summarize(m=mean(correct))
+```
+
+
+```{r}
+s1_sit %>% group_by(condition, first_cond) %>% summarize(m=mean(correct))
+```
+
+
+```{r}
+unique_IDs <- unique(s2_train$ID)
+
+for (s in 1:length(unique_IDs)) {
+  s2_train[s2_train$ID == unique_IDs[s], "first_cond"] <- 
+    s2_with_cond_order[s2_with_cond_order$de_ID == unique_IDs[s], "first_cond"]
+  s2_sit[s2_sit$ID == unique_IDs[s], "first_cond"] <- 
+    unique(s2_with_cond_order[s2_with_cond_order$de_ID == unique_IDs[s], "first_cond"])
+}
+```
+
+```{r}
+s2_train %>% group_by(condition, first_cond) %>% summarize(m=mean(correct))
+```
+
+
+
+```{r}
+s2_sit %>% group_by(condition, first_cond) %>% summarize(m=mean(correct))
+```
+
+Random assignment of first condition was largely even, with more assignments to cognitive first in study 1 and overt first in condition 2  
+
+```{r}
+table(s1_train$first_cond)
+table(s2_train$first_cond)
+```
+```{r}
+# Specify overt as baseline factor so that negative effect corresponds to worst performance  
+s1_train$fc_cond <- factor(s1_train$first_cond, levels=c("overtTraining", "cognTraining"))
+contrasts(s1_train$fc_cond) <- c(-.5, .5)
+#head(s1_train$fc_cond)
+
+s2_train$fc_cond <- factor(s2_train$first_cond, levels=c("overt", "cognitive"))
+contrasts(s2_train$fc_cond) <- c(-.5, .5)
+
+s1_sit$fc_cond <- factor(s1_sit$first_cond, levels=c("overtTraining", "cognTraining"))
+contrasts(s1_sit$fc_cond) <- c(-.5, .5)
+
+s2_sit$fc_cond <- factor(s2_sit$first_cond, levels=c("overt", "cognitive"))
+contrasts(s2_sit$fc_cond) <- c(-.5, .5)
+```
+
+
+Consistent pattern whereby the condition difference is most pronounced when cognitive is first; main effect remains significant  
+
+```{r}
+# Reduced RE from interaction bc of non-convergence with full  
+summary(m1_train_full_regr <- glmer(correct ~  
+                                      cond_cc*fc_cond + scale(trial_within_condition) + 
+                                      (cond_cc + fc_cond +  scale(trial_within_condition) |ID), 
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+```{r}
+# Reduced for same reason  
+summary(m1_test_full_regr <- glmer(correct ~  cond_cc*fc_cond + (cond_cc + fc_cond|ID), 
+          data=s1_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+
+
+```{r}
+# Run with full interaction because 
+summary(m2_train_full_regr <- glmer(correct ~  
+                                      cond_cc*fc_cond + scale(trial_within_condition) + 
+                                      (cond_cc*fc_cond +  scale(trial_within_condition) | ID), 
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+```{r}
+summary(m2_test_full_regr <- glmer(correct ~  cond_cc*fc_cond + (cond_cc*fc_cond|ID), 
+          data=s2_sit, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+For resub, correlation between training and test performance  
+
+```{r}
+cor.test(
+  as.numeric(unlist(s1_train_summs[s1_train_summs$condition=="overt", "m"])),
+  as.numeric(unlist(s1_test_summs[s1_test_summs$condition=="overt", "m"]))
+)
+
+cor.test(
+  as.numeric(unlist(s1_train_summs[s1_train_summs$condition=="cognitive", "m"])),
+  as.numeric(unlist(s1_test_summs[s1_test_summs$condition=="cognitive", "m"]))
+)
+
+cor.test(
+  as.numeric(unlist(s2_train_summs[s2_train_summs$condition=="overt", "m"])),
+  as.numeric(unlist(s2_test_summs[s2_test_summs$condition=="overt", "m"]))
+)
+
+cor.test(
+  as.numeric(unlist(s2_train_summs[s2_train_summs$condition=="cognitive", "m"])),
+  as.numeric(unlist(s2_test_summs[s2_test_summs$condition=="cognitive", "m"]))
+)
+```
+
+
+
 ### Delay effects   
 
 Create sum contrast codes for delay  
+
 
 ```{r}
 # Specify overt as baseline factor so that negative effect corresponds to worst performance  
@@ -509,6 +862,50 @@ summary(m2_full_delay_cond <- glmer(correct ~  delay_cc*cond_cc + scale(trial_wi
 car::vif(m1_full_delay_cond)
 car::vif(m2_full_delay_cond)
 ```
+
+
+For resub, rerun interaction with continuous delay  
+
+
+```{r}
+summary(m1_full_delay_cond_cont <- glmer(correct ~  scale(delay)*cond_cc + scale(trial_within_condition) +
+                                 (cond_cc|ID),
+          data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+# Singular 
+# summary(m1_full_delay_cond_cont <- glmer(correct ~  scale(delay)*cond_cc + scale(trial_within_condition) +
+#                                  (scale(delay) + cond_cc|ID),
+#           data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+```{r}
+# Singular 
+# summary(m1_full_delay_cond_cont <- glmer(correct ~  scale(delay)*cond_cc + scale(trial_within_condition) +
+#                                  (scale(delay)*cond_cc |ID),
+#           data=s1_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+```{r}
+summary(m2_full_delay_cond_cont <- glmer(correct ~  scale(delay)*cond_cc + scale(trial_within_condition) +
+                                 ( cond_cc|ID),
+          data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
+
+```{r}
+# Also singular
+# summary(m2_full_delay_cond_cont <- glmer(correct ~  scale(delay)*cond_cc + scale(trial_within_condition) +
+#                                  (scale(delay) + cond_cc|ID),
+#           data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+
+# # singular
+# summary(m2_full_delay_cond_cont <- glmer(correct ~  scale(delay)*cond_cc + scale(trial_within_condition) +
+#                                  (scale(delay)*cond_cc|ID),
+#           data=s2_train, family="binomial", control = glmerControl(optimizer = "bobyqa")))
+```
+
 
 ### Heterogeneity in condition effect   
 
@@ -624,7 +1021,7 @@ length(which(o_min_c_testperf_s2 == 0))/length(o_min_c_testperf_s2)
 ## Model 1 — Q learner with different decay (phi). Includes eps, CK, block explor parameter  
 
 
-Numbers from before bug fix on the use of prior (3/23/23) dont use: 58986 | 52624 | 57510  | 74680
+Numbers from before bug fix on the use of prior (3/23/23) dont use: 58986 | 52624 | 57510  | 74680   
 ```{r}
 m1_study1_eb_v1 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior17352.csv")
 m1_study1_eb_v2 <- rm(bp, "BEST_study_1_train_SIT_EMPIRICAL_BAYES_RunMQLearnerDiffDecayToPessPrior58319.csv")
@@ -891,7 +1288,7 @@ all_vs
 #ggsave("../paper/figs/fig_parts/phi_vs_propdiff.png", all_vs, height=8, width=14, dpi=700)
 ```
 
-Correlation with decay effect  
+Correlation with delay effect  
 ```{r}
 cor.test(m1_study1_eb_v1$cog_phi+m1_study1_eb_v1$overt_phi, ranef(m1_full_delay_cond)$ID$delay_cc1)
 cor.test(m1_study2_eb_v1$cog_phi+m1_study2_eb_v1$overt_phi, ranef(m2_full_delay_cond)$ID$delay_cc1)
@@ -903,6 +1300,64 @@ cor.test(m1_study2_eb_v1$cog_phi+m1_study2_eb_v1$overt_phi, ranef(m2_full_delay_
 ComparePars((m1_study1_eb_v1$cog_phi+m1_study1_eb_v1$overt_phi), ranef(m1_full_delay_cond)$ID$delay_cc1, use_identity_line = 0)
 
 ComparePars((m1_study2_eb_v1$cog_phi+m1_study2_eb_v1$overt_phi), ranef(m2_full_delay_cond)$ID$delay_cc1, use_identity_line = 0)
+```
+
+
+For resub, examining whether phi correlates with RT difference  
+
+```{r}
+assert(all(s1_tr_diffs_inds$ID==m1_study1_eb$ID))
+assert(all(s1_te_diffs_inds$ID==m1_study1_eb$ID))
+assert(all(s2_tr_diffs_inds$ID==m1_study2_eb$ID))
+assert(all(s2_te_diffs_inds$ID==m1_study2_eb$ID))
+
+ComparePars(m1_study1_eb$cog_phi-m1_study1_eb$overt_phi, s1_tr_diffs_inds$m, use_identity_line = 0)
+ComparePars(m1_study1_eb$cog_phi-m1_study1_eb$overt_phi, s1_te_diffs_inds$m, use_identity_line = 0)
+ComparePars(m1_study2_eb$cog_phi-m1_study2_eb$overt_phi, s2_tr_diffs_inds$m, use_identity_line = 0)
+ComparePars(m1_study2_eb$cog_phi-m1_study2_eb$overt_phi, s2_te_diffs_inds$m, use_identity_line = 0)
+
+cor.test(m1_study1_eb$cog_phi-m1_study1_eb$overt_phi, s1_tr_diffs_inds$m)
+cor.test(m1_study1_eb$cog_phi-m1_study1_eb$overt_phi, s1_te_diffs_inds$m)
+cor.test(m1_study2_eb$cog_phi-m1_study2_eb$overt_phi, s2_tr_diffs_inds$m)
+cor.test(m1_study2_eb$cog_phi-m1_study2_eb$overt_phi, s2_te_diffs_inds$m)
+```
+
+
+For resub, examining if phi differs based on condition order  
+```{r}
+
+unique_IDs <- unique(m1_study1_eb$ID)
+for (s in 1:length(unique_IDs)) {
+  m1_study1_eb[m1_study1_eb$ID == unique_IDs[s], "first_cond"] <- 
+    unique(s1_with_cond_order[s1_with_cond_order$deident_ID == unique_IDs[s], "first_cond"])
+}
+```
+
+```{r}
+unique_IDs <- unique(m1_study2_eb$ID)
+for (s in 1:length(unique_IDs)) {
+  m1_study2_eb[m1_study2_eb$ID == unique_IDs[s], "first_cond"] <- 
+    unique(s2_with_cond_order[s2_with_cond_order$de_ID == unique_IDs[s], "first_cond"])
+}
+```
+
+
+```{r}
+m1_study1_eb %>% group_by(first_cond) %>% summarize(om=median(overt_phi), cm=median(cog_phi))
+```
+```{r}
+m1_study2_eb %>% group_by(first_cond) %>% summarize(om=median(overt_phi), cm=median(cog_phi))
+```
+
+
+For resub, show delay distribution  
+
+```{r}
+hist(s1_train$delay, breaks=100)
+
+```
+```{r}
+hist(s2_train$delay, breaks=100)
 ```
 
 *Model validation, main text parts*   
@@ -1668,9 +2123,10 @@ AIC_diff_df$model <- factor(AIC_diff_df$model, levels = levels)
 
 ```{r, fig.height=4, fig.width=8}
 mp1 <- ggplot(AIC_diff_summ %>% filter(study == 1), aes(x=model, y=m, group=model, fill=model)) + 
-  geom_hline(yintercept = 0, size=2) +
+  geom_hline(yintercept = 0, size=4) +
+  geom_hline(yintercept = seq(-50, 60, 10), color="gray57", alpha=.8, size=.65) +
   geom_jitter(data=AIC_diff_df %>% filter(study == 1), aes(x=model, y=diff, group=model), 
-                fill="gray57", pch=21, width=.3, size=4, alpha=.05) + 
+                fill="gray57", pch=21, width=.3, size=4, alpha=.08) + 
   geom_bar(stat="identity", color="black", alpha=.8, size=2) + 
   ylab(TeX('$\\Delta\ AIC$ from simple Q-learner')) +
   tol + ga + ap + tp +
@@ -1678,22 +2134,23 @@ mp1 <- ggplot(AIC_diff_summ %>% filter(study == 1), aes(x=model, y=m, group=mode
   #facet_wrap(~ study) +
   xlab("") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())  +
-    theme(axis.title.y=element_text(size=22)) + ylim(-65, 65) + coord_flip()
+    theme(axis.title.y=element_text(size=22)) + ylim(-55, 65) + coord_flip()
 
 ```
 
 ```{r, fig.height=4, fig.width=8}
 mp2 <- ggplot(AIC_diff_summ %>% filter(study == 2), aes(x=model, y=m, group=model, fill=model)) + 
-  geom_hline(yintercept = 0, size=2) +
+  geom_hline(yintercept = 0, size=4) +
+  geom_hline(yintercept = seq(-50, 60, 10), color="gray57", alpha=.8, size=.65) +
   geom_jitter(data=AIC_diff_df %>% filter(study == 2), aes(x=model, y=diff, group=model), 
-                fill="gray57", pch=21, width=.3, size=4, alpha=.05) + 
+                fill="gray57", pch=21, width=.3, size=4, alpha=.08) + 
   geom_bar(stat="identity", color="black", alpha=.8, size=2) + 
   ylab(TeX('$\\Delta\ AIC$ from simple Q-learner')) +
   tol + ga + ap + tp +
   ggtitle("Study 2") +
   xlab("") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())  +
-  theme(axis.title.y=element_text(size=22)) + ylim(-65, 65) + coord_flip()
+  theme(axis.title.y=element_text(size=22)) + ylim(-55, 65) + coord_flip()
 ```
 
 

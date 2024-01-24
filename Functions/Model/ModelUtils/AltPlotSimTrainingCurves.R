@@ -75,21 +75,23 @@ AltPlotSimTrainingCurves <- function(emp_df, sim_df) {
       sim_95_combined %>% group_by(condition, trial_within_condition) %>% summarize(m=mean(sim_corrs))
     
     
-    this_plot <- ggplot(sim_5_summs, aes(x=trial_within_condition, y=m, group=condition, color=condition)) + 
+    this_plot <- ggplot(sim_5_summs, aes(x=trial_within_condition, y=m, group=condition)) + 
       #geom_line(size=2, alpha=1, color="gray57") + 
-      geom_line(size=1, alpha=1, linetype="longdash") +
-      geom_line(data=sim_95_summs, aes(x=trial_within_condition, y=m, group=condition, color=condition),
+      geom_line(size=2, alpha=1, color="gray75") +#, linetype="longdash") +
+      geom_line(data=sim_95_summs, aes(x=trial_within_condition, y=m, group=condition),
                 #color="black", size=2, alpha=1) +
-                size=1, alpha=1, linetype="longdash") +
-      geom_line(data=emp_summs %>% 
+                size=2, alpha=1, color="gray75") + 
+    #+#, linetype="longdash") +
+    
+      geom_line(data=emp_summs %>%
                   filter(valence_and_probability == vps[i]),
-                aes(x=trial_within_condition, y=m, group=condition, color=condition), size=2, alpha=1) + 
+                aes(x=trial_within_condition, y=m, group=condition, color=condition), size=2, alpha=1) +
       geom_hline(yintercept = c(seq(.5, 1, .1))) +
       geom_hline(yintercept = .5, size=3) +
-      geom_vline(xintercept = 20, size=1, color="gray57", linetype="dotted") + 
+      geom_vline(xintercept = 20, size=1, color="gray57", linetype="dotted") +
       ga + ap + lp + facet_wrap(~ condition) + ft +
       xlab("Stim iteration") + ylab("Proportion correct") + tol +
-      scale_color_manual(values=c("purple", "orange"))  + 
+      scale_color_manual(values=c("purple", "orange"))  +
       ggtitle(labels[i]) + theme(plot.title = element_text(size = 35, hjust = .5))
     
     if (i %in% c(1:2)) this_plot <- this_plot + xlab("") + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())

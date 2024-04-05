@@ -923,12 +923,48 @@ summary(choice_effect_s2 <- glmer(chose_cognitive ~  1 + ( 1|ID),
 ```
 
 
+# 3/19/24 - ethnicity as per Ethnicity.identified var from Prolific from shared drive (shared drive doc has other demographic tallies)  
+
+```{r}
+# Study 1
+s1n <- 125
+7/s1n # Asian
+8/s1n # Black
+5/s1n # Mixed
+3/s1n # Other
+100/s1n # White
+2/s1n # Data expired
+```
+```{r}
+# Study 2
+s2n <- 4+5+6+13+5+105
+s2n==138
+4/s2n # Asian
+5/s2n # Black
+13/s2n # Mixed
+5/s2n # Other
+105/s2n # White
+6/s2n # Data expired
+```
 
 # Questionnaires   
 
 ```{r}
 s1_qs <- read.csv("../data/cleaned_files/s1_qs_deidentified.csv")
 s2_qs <- read.csv("../data/cleaned_files/s2_qs_deidentified.csv")
+```
+
+
+```{r}
+s1_demogs <- read.csv("../data/cleaned_files/s1_demogs_deIDed.csv")
+s2_demogs <- read.csv("../data/cleaned_files/s2_demogs_deIDed.csv")
+```
+
+
+
+```{r}
+# names(s1_qs)
+# names(s2_qs)
 ```
 
 
@@ -940,11 +976,27 @@ table(s1_qs$Q6_20) # All correct
 table(s1_qs$Q7_19) # All correct
 ```
 
+4/4 — now removing the pt who skipped all items here (leaving n=122 completers). This mayslightly influenced PTQ and RRS imputations; statistic now corrected to p's > .07 (originally .10)  
+
+```{r}
+s1_qs <- s1_qs[-66, ]
+```
+
+
 ```{r}
 table(s2_qs$Q6_20) # All correct
 table(s2_qs$Q7_19) # One pt incorrect but they answered the other catch item correctly, so retained (given recs in lit that excluding on a single catch item can bias results)
 #s2_qs %>% filter(Q7_19 == "Very true for me")
 ```
+
+
+From notes:  
+Q2 is the PTQ  
+Q6 is the MASQ — 23 items, catch is 20 (confirmed on Qualtrics)  - but permission issue explained in revision hence not reported  
+Q7 is the BIS/BAS  — 25 items, catch is 19 (confirmed on Qualtrics)     
+  - some are not part of the scale   
+Q8 is the RRS — 10 items, no catch  
+
 
 *S1 questionnaires*    
 
@@ -952,7 +1004,7 @@ Get and recode PTQ and RRS
 
 ```{r}
 s1_ptq <- s1_qs %>% select(contains("Q2_")) %>% setNames(paste0("PTQ_", 1:15))
-s1_ptq$ID <- s1_qs$ID
+#s1_ptq$ID <- s1_qs$ID 4/4 removing to make sure not in imputation 
 s1_ptq_copy <- s1_ptq
 s1_ptq_copy$ID <- s1_qs$ID
 s1_ptq[s1_ptq=="Never"] <- 0
@@ -966,7 +1018,7 @@ s1_ptq[s1_ptq=="Almost always"] <- 4
 ```{r}
 s1_rrs <- 
   s1_qs %>% select(contains("Q8_")) %>% setNames(paste0("RRS_", 1:10))
-s1_rrs$ID <- s1_qs$ID
+#s1_rrs$ID <- s1_qs$ID 4/4 removing to make sure not in imputation 
 s1_rrs_copy <- s1_rrs
 s1_rrs_copy$ID <- s1_qs$ID
 s1_rrs[s1_rrs=="Almost never"] <- 1
@@ -975,13 +1027,163 @@ s1_rrs[s1_rrs=="Often"] <- 3
 s1_rrs[s1_rrs=="Almost always"] <- 4
 ```
 
-Drop the 1 pt who skipped all  items  (leaving n=122 completers for study 1)  
+For revision: BIS/BAS   
 
+Exclude catch but keep filler items for now   
 ```{r}
-s1_ptq <- s1_ptq[-66, ]
-s1_rrs <- s1_rrs[-66, ]
+#s1_qs %>% select(contains("Q7_")) %>% select("Q7_19") # confirmed this is catch 
+s1_bis_bas <- s1_qs %>% select(contains("Q7_")) %>% select(-"Q7_19") 
 ```
 
+
+"Items other than 2 and 22 are reverse coded"  
+
+The two BIS items that are forward coded  (1= very true, 4=very false) — Q7_23 corresponds to item 22 in actual scale because of the catch item    
+```{r}
+fwd_code_bis_bas <- s1_bis_bas %>% select("Q7_2", "Q7_23")
+fwd_code_bis_bas[fwd_code_bis_bas=="Very true for me"] <- 1
+fwd_code_bis_bas[fwd_code_bis_bas=="Somewhat true for me"] <- 2
+fwd_code_bis_bas[fwd_code_bis_bas=="Somewhat false for me"] <- 3
+fwd_code_bis_bas[fwd_code_bis_bas=="Very false for me"] <- 4
+```
+
+Sanity check that positively correlate  
+```{r}
+cor.test(as.numeric(fwd_code_bis_bas$Q7_2), as.numeric(fwd_code_bis_bas$Q7_23))
+```
+
+
+The rest are reverse coded  
+```{r}
+rev_code_bis_bas <- s1_bis_bas %>% select(-c("Q7_2", "Q7_23"))
+rev_code_bis_bas[rev_code_bis_bas=="Very true for me"] <- 4
+rev_code_bis_bas[rev_code_bis_bas=="Somewhat true for me"] <- 3
+rev_code_bis_bas[rev_code_bis_bas=="Somewhat false for me"] <- 2
+rev_code_bis_bas[rev_code_bis_bas=="Very false for me"] <- 1
+```
+
+```{r}
+s1_bis_bas <- data.frame(fwd_code_bis_bas, rev_code_bis_bas)
+```
+
+```{r}
+s1_bis_bas_num <- foreach (i = 1:ncol(s1_bis_bas)) %do% {
+  data.frame(as.numeric(unlist(s1_bis_bas[i]))) %>% setNames(names(s1_bis_bas[i]))
+}%>% bind_cols()
+```
+
+Sanity check BIS fwd and reverse code items postiively correlate  
+```{r}
+cor.test(s1_bis_bas_num$Q7_2, s1_bis_bas_num$Q7_23)
+
+cor.test(s1_bis_bas_num$Q7_2, s1_bis_bas_num$Q7_8)
+cor.test(s1_bis_bas_num$Q7_23, s1_bis_bas_num$Q7_8)
+# Item 24 because shifted by 1 due to catch
+cor.test(s1_bis_bas_num$Q7_2, s1_bis_bas_num$Q7_25)
+cor.test(s1_bis_bas_num$Q7_23, s1_bis_bas_num$Q7_25)
+
+cor.test(s1_bis_bas_num$Q7_2, s1_bis_bas_num$Q7_16)
+cor.test(s1_bis_bas_num$Q7_23, s1_bis_bas_num$Q7_16)
+```
+
+Now remove filler items — all before catch so all items correspond to actual num in scale   
+```{r}
+s1_bis_bas <- s1_bis_bas_num %>% select(-c(
+  "Q7_1",
+  "Q7_6",
+  "Q7_11",
+  "Q7_17") 
+)
+```
+
+BIS  
+```{r}
+s1_bis <- s1_bis_bas %>% select(
+  # Before catch item 
+  c("Q7_2", "Q7_8", "Q7_13", "Q7_16"),
+  # After catch so one shifted
+  c("Q7_20", "Q7_23", "Q7_25"))
+
+```
+
+Just 1 missing so impute  
+```{r}
+length(which(is.na(s1_bis[, 1:7])))
+length(which(is.na(s1_bis[, 1:7])))/(dim(s1_bis[, 1:7])[1]*dim(s1_bis[, 1:7])[2]) 
+```
+
+```{r}
+s1_bis_final <- foreach (i = 1:nrow(s1_bis)) %do% {
+  if (any(is.na(s1_bis[i, ]))) {
+    s1_bis[i, is.na(s1_bis[i, ])] <- mean(unlist(s1_bis[i, ]), na.rm=TRUE)
+  }
+s1_bis[i, ]
+}%>% bind_rows()
+```
+
+Sanity check all positively correlated  
+```{r}
+cor(s1_bis_final)
+```
+And high alpha  
+
+```{r}
+psych::alpha(s1_bis_final)
+```
+
+```{r}
+s1_bis_final$bis_sum <- rowSums(s1_bis_final)
+s1_bis_final$ID <- s1_qs$ID
+```
+
+
+The remaining items are BAS   
+```{r}
+s1_bas <- s1_bis_bas %>% select(
+  
+  -c("Q7_2", "Q7_8", "Q7_13", "Q7_16",
+  
+  "Q7_20", "Q7_23", "Q7_25"))
+```
+
+Just 3 missing so impute  
+```{r}
+length(which(is.na(s1_bas[, 1:ncol(s1_bas)])))
+length(which(is.na(s1_bas[, 1:ncol(s1_bas)])))/(dim(s1_bas[, 1:ncol(s1_bas)])[1]*dim(s1_bas[, 1:ncol(s1_bas)])[2]) 
+```
+
+```{r}
+s1_bas_final <- foreach (i = 1:nrow(s1_bas)) %do% {
+  if (any(is.na(s1_bas[i, ]))) {
+    s1_bas[i, is.na(s1_bas[i, ])] <- mean(unlist(s1_bas[i, ]), na.rm=TRUE)
+  }
+s1_bas[i, ]
+}%>% bind_rows()
+```
+
+Sanity check all positively correlated  
+```{r}
+cor(s1_bas_final)
+```
+And high alpha  
+
+```{r}
+psych::alpha(s1_bas_final) 
+```
+
+
+```{r}
+s1_bas_final$bas_sum <- rowSums(s1_bas_final)
+hist(s1_bas_final$bas_sum, breaks=25)
+s1_bas_final$ID <- s1_qs$ID
+```
+
+Modestly inversely related  
+```{r}
+ComparePars(s1_bas_final$bas_sum, s1_bis_final$bis_sum, use_identity_line = 0)
+```
+ 
+*Prep PTQ S1*  
 Convert to numeric  
 ```{r}
 s1_ptq_num <- foreach (i = 1:ncol(s1_ptq)) %do% {
@@ -1010,6 +1212,16 @@ hist(rowSums(s1_ptq_final[, 1:15]), breaks=25)
 s1_ptq_final$ptq_sum <- rowSums(s1_ptq_final[, 1:15])
 ```
 
+```{r}
+s1_ptq_final$ID <- s1_qs$ID
+```
+
+Sanity check that correlated in expected irection  
+```{r}
+ComparePars(s1_ptq_final$ptq_sum, s1_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s1_ptq_final$ptq_sum, s1_bas_final$bas_sum, use_identity_line = 0)
+```
+
 Spot check IDs lined up properly  
 
 ```{r}
@@ -1021,9 +1233,9 @@ Spot check IDs lined up properly
 # s1_qs %>% filter(ID == 104)
 ```
 
+*Prep S1 RRS*  
 
 
-Convert to numeric  
 ```{r}
 s1_rrs_num <- foreach (i = 1:ncol(s1_rrs)) %do% {
   data.frame(as.numeric(unlist(s1_rrs[i]))) %>% setNames(names(s1_rrs[i]))
@@ -1044,29 +1256,41 @@ s1_rrs_num[i, ]
 }%>% bind_rows()
 ```
 
+```{r}
+hist(rowSums(s1_rrs_final[, 1:10]), breaks=25)
+s1_rrs_final$rrs_sum <- rowSums(s1_rrs_final[, 1:10])
+```
+
+```{r}
+s1_rrs_final$ID <- s1_qs$ID
+```
+
+s1
 Spot check  
 
 ```{r}
 # s1_rrs_final %>% filter(ID == 106)
 # s1_rrs_copy %>% filter(ID == 106)
-# s1_qs %>% filter(ID == 106)
+# s1_qs %>% filter(ID == 106) # Q8 is RRS
 ```
 
 
 
-```{r}
-hist(rowSums(s1_rrs_final[, 1:10]), breaks=25)
-s1_rrs_final$rrs_sum <- rowSums(s1_rrs_final[, 1:10])
-```
 
 
 Sanity check RRS and PTQ are strongly correlated  
 ```{r}
 ComparePars(s1_rrs_final$rrs_sum, s1_ptq_final$ptq_sum, use_identity_line = 0)
 ```
+```{r}
+ComparePars(s1_rrs_final$rrs_sum, s1_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s1_rrs_final$rrs_sum, s1_bas_final$bas_sum, use_identity_line = 0)
+```
 
 
-Reduced to just matching IDs  
+
+Reduce to just matching IDs  
+
 ```{r}
 m1_s1_model_red <- m1_study1_eb %>% filter(ID %in% s1_ptq_final$ID)
 m1_s1_model_red$c_min_o_phi <- m1_s1_model_red$cog_phi - m1_s1_model_red$overt_phi
@@ -1085,7 +1309,8 @@ ComparePars(m1_s1_model_red$overt_phi, s1_ptq_final$ptq_sum, use_identity_line =
 ```
 
 
-Same basic pattern for RRS  
+Same basic pattern for RRS
+4/4 - this was where p value for top statistic slightly different due to imputation error in first version involving ID, adjusted in manuscript from   
 ```{r}
 ComparePars(m1_s1_model_red$c_min_o_phi, s1_rrs_final$rrs_sum, use_identity_line = 0)
 # Would expect higher decay to positively correlate w more brooding — instead small and ns neg  
@@ -1093,15 +1318,115 @@ ComparePars(m1_s1_model_red$cog_phi, s1_rrs_final$rrs_sum, use_identity_line = 0
 ComparePars(m1_s1_model_red$overt_phi, s1_rrs_final$rrs_sum, use_identity_line = 0)
 ```
 
+Do same thing with age  
 
-*s2 questionnaires*      
+Complete age data so don't need to reduce   
+
+```{r}
+assert(all(s1_demogs$ID==m1_study1_eb$ID))
+```
 
 
-Get and recode PTQ and RRS   
+```{r}
+m1_study1_eb$c_min_o_phi <- m1_study1_eb$cog_phi - m1_study1_eb$overt_phi
+```
+
+
+Added for second revision — Age — surprisingly not related to particularly high decay in cog. Closest to signif is actually higher decay in overt!  
+```{r}
+ComparePars(m1_study1_eb$c_min_o_phi, s1_demogs$Age, use_identity_line = 0)
+ComparePars(m1_study1_eb$cog_phi, s1_demogs$Age, use_identity_line = 0)
+ComparePars(m1_study1_eb$overt_phi, s1_demogs$Age, use_identity_line = 0)
+```
+
+Age and task performance  
+
+```{r}
+s1_train_perf <- s1_train %>% group_by(ID) %>% summarize(m=mean(correct))
+s1_test_perf <- s1_sit %>% group_by(ID) %>% summarize(m=mean(correct))
+```
+
+```{r}
+assert(all(s1_demogs$ID==s1_train_perf$ID))
+assert(all(s1_demogs$ID==s1_test_perf$ID))
+```
+
+Related to overall performance  
+```{r}
+ComparePars(s1_train_perf$m, s1_demogs$Age, use_identity_line = 0)
+ComparePars(s1_test_perf$m, s1_demogs$Age, use_identity_line = 0)
+```
+
+But not difference in cog vs. overt performance  
+```{r}
+s1_perf <- s1_train %>% group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_perf_s1 <- as.numeric(unlist(s1_perf[s1_perf$condition=="overt","m"]-
+                    s1_perf[s1_perf$condition=="cognitive", "m"]))
+
+# .. and test subject-level differences in performance  
+s1_perf_test <- s1_sit %>% group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_testperf_s1 <- as.numeric(unlist(s1_perf_test[s1_perf_test$condition=="overt","m"]-
+                    s1_perf_test[s1_perf_test$condition=="cognitive", "m"]))
+```
+
+```{r}
+ComparePars(o_min_c_perf_s1, s1_demogs$Age, use_identity_line = 0)
+ComparePars(o_min_c_testperf_s1, s1_demogs$Age, use_identity_line = 0)
+```
+
+
+
+
+Added for second revision — any relationships with reward vs. punishment learning and BIS/BAS?  
+```{r}
+s1_rew_train_perf <- s1_train %>% filter(valence=="reward") %>% group_by(ID) %>% summarize(m=mean(correct))
+s1_pun_train_perf <- s1_train %>% filter(valence=="punishment") %>% group_by(ID) %>% summarize(m=mean(correct))
+s1_rew_train_perf$rew_min_pun <-  s1_rew_train_perf$m-s1_pun_train_perf$m
+
+s1_rew_sit_perf <- s1_sit %>% filter(valence=="reward") %>% group_by(ID) %>% summarize(m=mean(correct))
+s1_pun_sit_perf <- s1_sit %>% filter(valence=="punishment") %>% group_by(ID) %>% summarize(m=mean(correct))
+s1_rew_sit_perf$rew_min_pun <- s1_rew_sit_perf$m-s1_pun_sit_perf$m
+
+ComparePars(s1_rew_train_perf$rew_min_pun, s1_rew_sit_perf$rew_min_pun, use_identity_line = 0)
+```
+
+Reduce to just matching IDs  
+
+```{r}
+s1_rew_train_perf_red <- s1_rew_train_perf %>% filter(ID %in% s1_bis_final$ID)
+s1_rew_sit_perf_red <- s1_rew_sit_perf %>% filter(ID %in% s1_bis_final$ID)
+ComparePars(s1_rew_train_perf_red$rew_min_pun, s1_rew_sit_perf_red$rew_min_pun, use_identity_line = 0)
+```
+
+
+```{r}
+assert(all(s1_rew_sit_perf_red$ID==s1_bis_final$ID))
+assert(all(s1_rew_sit_perf_red$ID==s1_bas_final$ID))
+assert(all(s1_rew_train_perf_red$ID==s1_bis_final$ID))
+assert(all(s1_rew_train_perf_red$ID==s1_bas_final$ID))
+```
+
+Not correlated  
+```{r}
+ComparePars(s1_rew_train_perf_red$rew_min_pun, s1_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s1_rew_train_perf_red$rew_min_pun, s1_bas_final$bas_sum, use_identity_line = 0)
+
+ComparePars(s1_rew_sit_perf_red$rew_min_pun, s1_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s1_rew_sit_perf_red$rew_min_pun, s1_bas_final$bas_sum, use_identity_line = 0)
+```
+
+*s2 questionnaires new code*  
+
+No pts with all skips here and table above shows no exclusions  
+
+
+Get and recode PTQ and RRS  
 
 ```{r}
 s2_ptq <- s2_qs %>% select(contains("Q2_")) %>% setNames(paste0("PTQ_", 1:15))
-s2_ptq$ID <- s2_qs$ID
+#s2_ptq$ID <- s2_qs$ID 4/4 removing to make sure not in imputation 
 s2_ptq_copy <- s2_ptq
 s2_ptq_copy$ID <- s2_qs$ID
 s2_ptq[s2_ptq=="Never"] <- 0
@@ -1115,7 +1440,7 @@ s2_ptq[s2_ptq=="Almost always"] <- 4
 ```{r}
 s2_rrs <- 
   s2_qs %>% select(contains("Q8_")) %>% setNames(paste0("RRS_", 1:10))
-s2_rrs$ID <- s2_qs$ID
+#s2_rrs$ID <- s2_qs$ID 4/4 removing to make sure not in imputation 
 s2_rrs_copy <- s2_rrs
 s2_rrs_copy$ID <- s2_qs$ID
 s2_rrs[s2_rrs=="Almost never"] <- 1
@@ -1124,8 +1449,153 @@ s2_rrs[s2_rrs=="Often"] <- 3
 s2_rrs[s2_rrs=="Almost always"] <- 4
 ```
 
-No pts with skips  
+For revision: BIS/BAS   
 
+Exclude catch but keep filler items for now   
+```{r}
+#s2_qs %>% select(contains("Q7_")) %>% select("Q7_19") # confirmed this is catch 
+s2_bis_bas <- s2_qs %>% select(contains("Q7_")) %>% select(-"Q7_19") 
+```
+
+
+"Items other than 2 and 22 are reverse coded"  
+
+The two BIS items that are forward coded  (1= very true, 4=very false) — Q7_23 corresponds to item 22 in actual scale because of the catch item    
+```{r}
+fwd_code_bis_bas <- s2_bis_bas %>% select("Q7_2", "Q7_23")
+fwd_code_bis_bas[fwd_code_bis_bas=="Very true for me"] <- 1
+fwd_code_bis_bas[fwd_code_bis_bas=="Somewhat true for me"] <- 2
+fwd_code_bis_bas[fwd_code_bis_bas=="Somewhat false for me"] <- 3
+fwd_code_bis_bas[fwd_code_bis_bas=="Very false for me"] <- 4
+```
+
+Sanity check that positively correlate  
+```{r}
+cor.test(as.numeric(fwd_code_bis_bas$Q7_2), as.numeric(fwd_code_bis_bas$Q7_23))
+```
+
+
+The rest are reverse coded  
+```{r}
+rev_code_bis_bas <- s2_bis_bas %>% select(-c("Q7_2", "Q7_23"))
+rev_code_bis_bas[rev_code_bis_bas=="Very true for me"] <- 4
+rev_code_bis_bas[rev_code_bis_bas=="Somewhat true for me"] <- 3
+rev_code_bis_bas[rev_code_bis_bas=="Somewhat false for me"] <- 2
+rev_code_bis_bas[rev_code_bis_bas=="Very false for me"] <- 1
+```
+
+```{r}
+s2_bis_bas <- data.frame(fwd_code_bis_bas, rev_code_bis_bas)
+```
+
+```{r}
+s2_bis_bas_num <- foreach (i = 1:ncol(s2_bis_bas)) %do% {
+  data.frame(as.numeric(unlist(s2_bis_bas[i]))) %>% setNames(names(s2_bis_bas[i]))
+}%>% bind_cols()
+```
+
+Sanity check BIS fwd and reverse code items positively correlate  
+```{r}
+cor.test(s2_bis_bas_num$Q7_2, s2_bis_bas_num$Q7_23)
+
+cor.test(s2_bis_bas_num$Q7_2, s2_bis_bas_num$Q7_8)
+cor.test(s2_bis_bas_num$Q7_23, s2_bis_bas_num$Q7_8)
+# Item 24 because shifted by 1 due to catch
+cor.test(s2_bis_bas_num$Q7_2, s2_bis_bas_num$Q7_25)
+cor.test(s2_bis_bas_num$Q7_23, s2_bis_bas_num$Q7_25)
+
+cor.test(s2_bis_bas_num$Q7_2, s2_bis_bas_num$Q7_16)
+cor.test(s2_bis_bas_num$Q7_23, s2_bis_bas_num$Q7_16)
+```
+Now remove filler items — all before catch so all items corresopnd to actual num in scale  
+```{r}
+s2_bis_bas <- s2_bis_bas_num %>% select(-c(
+  "Q7_1",
+  "Q7_6",
+  "Q7_11",
+  "Q7_17") 
+)
+```
+
+BIS  
+```{r}
+s2_bis <- s2_bis_bas %>% select(
+  # Before catch item 
+  c("Q7_2", "Q7_8", "Q7_13", "Q7_16"),
+  # After catch so one shifted
+  c("Q7_20", "Q7_23", "Q7_25"))
+
+```
+
+Just 1 missing so impute  
+```{r}
+length(which(is.na(s2_bis[, 1:7])))
+length(which(is.na(s2_bis[, 1:7])))/(dim(s2_bis[, 1:7])[1]*dim(s2_bis[, 1:7])[2]) 
+```
+
+```{r}
+s2_bis_final <- foreach (i = 1:nrow(s2_bis)) %do% {
+  if (any(is.na(s2_bis[i, ]))) {
+    s2_bis[i, is.na(s2_bis[i, ])] <- mean(unlist(s2_bis[i, ]), na.rm=TRUE)
+  }
+s2_bis[i, ]
+}%>% bind_rows()
+```
+
+Sanity check all positively correlated  
+```{r}
+cor(s2_bis_final)
+```
+And high alpha  
+
+```{r}
+psych::alpha(s2_bis_final)
+```
+
+```{r}
+s2_bis_final$bis_sum <- rowSums(s2_bis_final)
+s2_bis_final$ID <- s2_qs$ID
+```
+
+
+The remaining items are BAS   
+```{r}
+s2_bas <- s2_bis_bas %>% select(
+  
+  -c("Q7_2", "Q7_8", "Q7_13", "Q7_16",
+  
+  "Q7_20", "Q7_23", "Q7_25"))
+```
+
+Nothing missing  
+
+```{r}
+s2_bas_final <- s2_bas
+```
+
+Sanity check all positively correlated  
+```{r}
+cor(s2_bas_final)
+```
+And high alpha  
+
+```{r}
+psych::alpha(s2_bas_final) 
+```
+
+
+```{r}
+s2_bas_final$bas_sum <- rowSums(s2_bas_final)
+hist(s2_bas_final$bas_sum, breaks=25)
+s2_bas_final$ID <- s2_qs$ID
+```
+
+Modestly inversely related  
+```{r}
+ComparePars(s2_bas_final$bas_sum, s2_bis_final$bis_sum, use_identity_line = 0)
+```
+ 
+*Prep PTQ s2*  
 Convert to numeric  
 ```{r}
 s2_ptq_num <- foreach (i = 1:ncol(s2_ptq)) %do% {
@@ -1133,7 +1603,7 @@ s2_ptq_num <- foreach (i = 1:ncol(s2_ptq)) %do% {
 }%>% bind_cols()
 ```
 
-
+Just 3 data points (< .1% of data) missing for remaining, so mean impute these  
 ```{r}
 length(which(is.na(s2_ptq_num[, 1:15])))
 length(which(is.na(s2_ptq_num[, 1:15])))/(dim(s2_ptq_num[, 1:15])[1]*dim(s2_ptq_num[, 1:15])[2]) 
@@ -1154,15 +1624,30 @@ hist(rowSums(s2_ptq_final[, 1:15]), breaks=25)
 s2_ptq_final$ptq_sum <- rowSums(s2_ptq_final[, 1:15])
 ```
 
+```{r}
+s2_ptq_final$ID <- s2_qs$ID
+```
+
+Sanity check that correlated in expected direction  
+```{r}
+ComparePars(s2_ptq_final$ptq_sum, s2_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s2_ptq_final$ptq_sum, s2_bas_final$bas_sum, use_identity_line = 0)
+```
+
 Spot check IDs lined up properly  
 
 ```{r}
-# s2_ptq_final %>% filter(ID == 95)
-# s2_ptq_copy %>% filter(ID == 95)
-# s2_qs %>% filter(ID == 95)
+# s2_ptq_final %>% filter(ID == 22)
+# s2_ptq_copy %>% filter(ID == 22)
+# # s2_qs %>% filter(ID == 22)
+# s2_ptq_final %>% filter(ID == 104)
+# s2_ptq_copy %>% filter(ID == 104)
+# s2_qs %>% filter(ID == 104)
 ```
 
-Convert to numeric  
+*Prep s2 RRS*  
+
+
 ```{r}
 s2_rrs_num <- foreach (i = 1:ncol(s2_rrs)) %do% {
   data.frame(as.numeric(unlist(s2_rrs[i]))) %>% setNames(names(s2_rrs[i]))
@@ -1183,29 +1668,41 @@ s2_rrs_num[i, ]
 }%>% bind_rows()
 ```
 
-Spot check  
-
-```{r}
-# s2_rrs_final %>% filter(ID == 128)
-# s2_rrs_copy %>% filter(ID == 128)
-# s2_qs %>% filter(ID == 128)
-```
-
-
-
 ```{r}
 hist(rowSums(s2_rrs_final[, 1:10]), breaks=25)
 s2_rrs_final$rrs_sum <- rowSums(s2_rrs_final[, 1:10])
 ```
+
+```{r}
+s2_rrs_final$ID <- s2_qs$ID
+```
+
+s2
+Spot check  
+
+```{r}
+# s2_rrs_final %>% filter(ID == 106)
+# s2_rrs_copy %>% filter(ID == 106)
+# s2_qs %>% filter(ID == 106) # Q8 is RRS
+```
+
+
+
 
 
 Sanity check RRS and PTQ are strongly correlated  
 ```{r}
 ComparePars(s2_rrs_final$rrs_sum, s2_ptq_final$ptq_sum, use_identity_line = 0)
 ```
+```{r}
+ComparePars(s2_rrs_final$rrs_sum, s2_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s2_rrs_final$rrs_sum, s2_bas_final$bas_sum, use_identity_line = 0)
+```
 
 
-Reduced to just matching IDs  
+
+Reduce to just matching IDs  
+
 ```{r}
 m1_s2_model_red <- m1_study2_eb %>% filter(ID %in% s2_ptq_final$ID)
 m1_s2_model_red$c_min_o_phi <- m1_s2_model_red$cog_phi - m1_s2_model_red$overt_phi
@@ -1230,6 +1727,109 @@ ComparePars(m1_s2_model_red$c_min_o_phi, s2_rrs_final$rrs_sum, use_identity_line
 # Would expect higher decay to positively correlate w more brooding — instead small and ns neg  
 ComparePars(m1_s2_model_red$cog_phi, s2_rrs_final$rrs_sum, use_identity_line = 0)
 ComparePars(m1_s2_model_red$overt_phi, s2_rrs_final$rrs_sum, use_identity_line = 0)
+```
+
+```{r}
+s2_rew_train_perf <- s2_train %>% filter(valence=="reward") %>% group_by(ID) %>% summarize(m=mean(correct))
+s2_pun_train_perf <- s2_train %>% filter(valence=="punishment") %>% group_by(ID) %>% summarize(m=mean(correct))
+s2_rew_train_perf$rew_min_pun <-  s2_rew_train_perf$m-s2_pun_train_perf$m
+
+s2_rew_sit_perf <- s2_sit %>% filter(valence=="reward") %>% group_by(ID) %>% summarize(m=mean(correct))
+s2_pun_sit_perf <- s2_sit %>% filter(valence=="punishment") %>% group_by(ID) %>% summarize(m=mean(correct))
+s2_rew_sit_perf$rew_min_pun <- s2_rew_sit_perf$m-s2_pun_sit_perf$m
+
+ComparePars(s2_rew_train_perf$rew_min_pun, s2_rew_sit_perf$rew_min_pun, use_identity_line = 0)
+```
+
+Reduce to just matching IDs  
+
+```{r}
+s2_rew_train_perf_red <- s2_rew_train_perf %>% filter(ID %in% s2_bis_final$ID)
+s2_rew_sit_perf_red <- s2_rew_sit_perf %>% filter(ID %in% s2_bis_final$ID)
+ComparePars(s2_rew_train_perf_red$rew_min_pun, s2_rew_sit_perf_red$rew_min_pun, use_identity_line = 0)
+```
+
+
+```{r}
+assert(all(s2_rew_sit_perf_red$ID==s2_bis_final$ID))
+assert(all(s2_rew_sit_perf_red$ID==s2_bas_final$ID))
+assert(all(s2_rew_train_perf_red$ID==s2_bis_final$ID))
+assert(all(s2_rew_train_perf_red$ID==s2_bas_final$ID))
+```
+
+Not correlated  
+```{r}
+ComparePars(s2_rew_train_perf_red$rew_min_pun, s2_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s2_rew_train_perf_red$rew_min_pun, s2_bas_final$bas_sum, use_identity_line = 0)
+
+ComparePars(s2_rew_sit_perf_red$rew_min_pun, s2_bis_final$bis_sum, use_identity_line = 0)
+ComparePars(s2_rew_sit_perf_red$rew_min_pun, s2_bas_final$bas_sum, use_identity_line = 0)
+```
+
+
+
+
+Added for second revision — Age   
+
+There are some Prolific pts without this so take them out and match the datasets   
+
+```{r}
+s2_demogs_red <- s2_demogs %>% filter(Age != "DATA_EXPIRED")
+s2_demogs_red$Age <- as.numeric(s2_demogs_red$Age)
+m1_study2_age_red <- m1_study2_eb %>% filter(ID %in% s2_demogs_red$ID)
+
+assert(all(s2_demogs_red$ID==m1_study2_age_red$ID))
+```
+
+
+```{r}
+m1_study2_age_red$c_min_o_phi <- m1_study2_age_red$cog_phi - m1_study2_age_red$overt_phi
+```
+
+Only one significant is overt decay!  
+```{r}
+ComparePars(m1_study2_age_red$c_min_o_phi, s2_demogs_red$Age, use_identity_line = 0)
+ComparePars(m1_study2_age_red$cog_phi, s2_demogs_red$Age, use_identity_line = 0)
+ComparePars(m1_study2_age_red$overt_phi, s2_demogs_red$Age, use_identity_line = 0)
+```
+
+Age and task performance  
+
+```{r}
+s2_train_perf_age_red <- s2_train %>% filter(ID %in% s2_demogs_red$ID) %>% group_by(ID) %>% summarize(m=mean(correct))
+s2_test_perf_age_red <- s2_sit %>% filter(ID %in% s2_demogs_red$ID) %>%  group_by(ID) %>% summarize(m=mean(correct))
+```
+
+```{r}
+assert(all(s2_demogs_red$ID==s2_train_perf_age_red$ID))
+assert(all(s2_demogs_red$ID==s2_test_perf_age_red$ID))
+```
+
+In study 2 unrelated to overall performance  
+```{r}
+ComparePars(s2_train_perf_age_red$m, s2_demogs_red$Age, use_identity_line = 0)
+ComparePars(s2_test_perf_age_red$m, s2_demogs_red$Age, use_identity_line = 0)
+```
+
+
+```{r}
+s2_perf_age_red <- s2_train %>% filter(ID %in% s2_demogs_red$ID) %>%
+  group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_perf_s2 <- as.numeric(unlist(s2_perf_age_red[s2_perf_age_red$condition=="overt","m"]-
+                    s2_perf_age_red[s2_perf_age_red$condition=="cognitive", "m"]))
+
+# .. and test subject-level differences in performance  
+s2_perf_age_red_test <- s2_sit %>% filter(ID %in% s2_demogs_red$ID) %>% 
+  group_by(condition, ID) %>% summarize(m=mean(correct))
+
+o_min_c_testperf_s2 <- as.numeric(unlist(s2_perf_age_red_test[s2_perf_age_red_test$condition=="overt","m"]-
+                    s2_perf_age_red_test[s2_perf_age_red_test$condition=="cognitive", "m"]))
+```
+
+```{r}
+ComparePars(o_min_c_perf_s2, s2_demogs_red$Age, use_identity_line = 0)
+ComparePars(o_min_c_testperf_s2, s2_demogs_red$Age, use_identity_line = 0)
 ```
 
 
